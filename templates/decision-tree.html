@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Flatpack: Decision tree template</title>
+<!-- FLATPACK:HELP
+
+  Flatpack:     Decision tree template
+  Version:      0.1.0
+  Purpose:      Branching question → recommendation. The user answers a
+                series of questions; each answer routes to the next node;
+                leaves carry a recommendation with reason and the path taken.
+  Data:         local-only
+  Network:      none
+  Persistence:  localStorage (the in-progress path)
+
+  HUMAN HELP
+    Inputs:   the tree definition (nodes + edges) and the user's
+              answers, one per visited node
+    Outputs:  the reached recommendation, the path taken, a copyable
+              summary, JSON export, and a printable page
+    Limits:   tree is finite, fully defined at load time; cycles are
+              not detected — author the tree as a DAG; node IDs must
+              be stable (used as state keys)
+
+  AI EDITING NOTES
+    - Safe to modify:  SCHEMA (the tree itself), STYLES, RENDERING.
+    - Edit with care:  STATE — bump STORAGE_KEY if the path shape
+                       changes; CORE_LOGIC functions are covered by
+                       tests, change with care.
+    - Avoid modifying: IMPORT_EXPORT unless changing file formats.
+    - Rules: no network, no external dependencies, no embedded secrets.
+    - Run TEST_CASES (?test=1) after changes to CORE_LOGIC or VALIDATION.
+-->
+
+<!-- FLATPACK:STYLES -->
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #fff; --ink: #1b1b1a; --muted: #6a6a66;
+    --line: #e5e5e0; --accent: #2b6cb0; --accent-ink: #fff;
+    --ok: #166534; --warn: #b45309;
+    --radius: 8px; --gap: 16px; --maxw: 720px;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); line-height: 1.5; }
+  main, header, footer { max-width: var(--maxw); margin: 0 auto; padding: 24px; }
+  header { padding-bottom: 0; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  h2 { font-size: 1.15rem; margin: 0 0 12px; }
+  .muted { color: var(--muted); }
+  .privacy { background: #eef4fb; border: 1px solid #cfe0f3; color: #1e3a5f;
+    padding: 10px 12px; border-radius: var(--radius); font-size: 0.9rem; margin: 16px 0 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; margin-bottom: var(--gap); }
+
+  .btn { appearance: none; border: 1px solid var(--line); background: #fff; color: var(--ink);
+    padding: 10px 14px; border-radius: var(--radius); font: inherit; cursor: pointer; }
+  .btn:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .btn.ghost { background: transparent; }
+  .btn + .btn { margin-left: 8px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+  .progress { height: 4px; background: #eee; border-radius: 2px; overflow: hidden; margin-bottom: 16px; }
+  .progress > div { height: 100%; background: var(--accent); transition: width 0.2s; }
+
+  .question { font-size: 1.25rem; font-weight: 600; margin: 0 0 16px; }
+  .answers { display: grid; gap: 10px; margin: 16px 0 8px; }
+  .answer { text-align: left; padding: 14px 16px; }
+  .answer:hover { background: #f0f4fa; border-color: var(--accent); }
+  .answer .note { color: var(--muted); font-size: 0.9rem; margin-top: 4px; }
+
+  .path { background: #fafaf7; border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 12px 16px; margin-bottom: 16px; font-size: 0.9rem; }
+  .path .step { display: block; padding: 2px 0; }
+  .path .step .q { color: var(--muted); }
+  .path .step .a { font-weight: 600; }
+
+  .leaf .badge { display: inline-block; background: var(--ok); color: #fff;
+    padding: 4px 10px; border-radius: 999px; font-size: 0.85rem; margin-bottom: 8px; }
+  .leaf .rec { font-size: 1.5rem; font-weight: 700; margin: 0 0 12px; }
+  .leaf .reason { white-space: pre-wrap; margin-bottom: 16px; }
+
+  footer { color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--line); margin-top: 24px; }
+
+  @media print {
+    body { background: #fff; color: #000; }
+    .no-print { display: none !important; }
+    main { max-width: none; padding: 0; }
+    .card { box-shadow: none; border: 1px solid #ccc; page-break-inside: avoid; }
+  }
+</style>
+
+<!-- FLATPACK:HTML -->
+</head>
+<body>
+<header>
+  <h1 id="app-title">Decision tree</h1>
+  <p class="muted" id="app-purpose">Answer a few questions to get a recommendation.</p>
+  <div class="privacy" id="privacy-banner" role="note">
+    Local-first: your answers are saved on this device. Nothing is uploaded.
+  </div>
+</header>
+
+<main>
+  <div class="progress no-print" aria-hidden="true">
+    <div id="progress-bar" style="width:0%"></div>
+  </div>
+
+  <section id="path-card" class="card" aria-label="Path so far"></section>
+  <section id="screen-card" class="card" aria-live="polite"></section>
+
+  <div class="row no-print" style="margin-top: 8px;">
+    <button class="btn ghost" type="button" id="back-btn">← Back</button>
+    <button class="btn ghost" type="button" id="restart-btn">Restart</button>
+  </div>
+</main>
+
+<footer>
+  <span id="footer-version"></span> · Local-only · No network · Single file
+</footer>
+
+<!-- FLATPACK:MANIFEST -->
+<script type="application/json" id="flatpack-manifest">
+{
+  "name": "Decision tree template",
+  "artifactType": "decision-tree",
+  "version": "0.1.0",
+  "scope": "personal",
+  "persistence": "localStorage",
+  "network": "none",
+  "entities": [
+    {
+      "name": "TreeNode",
+      "fields": [
+        { "name": "id",              "type": "string", "required": true, "unique": true },
+        { "name": "question",        "type": "string", "note": "present on branching nodes" },
+        { "name": "answers",         "type": "list",   "note": "present on branching nodes; each: { label, next, note? }" },
+        { "name": "recommendation",  "type": "string", "note": "present on leaf nodes" },
+        { "name": "reason",          "type": "text",   "note": "present on leaf nodes" }
+      ]
+    },
+    {
+      "name": "DecisionPath",
+      "fields": [
+        { "name": "steps", "type": "list", "note": "ordered list of { nodeId, answerIndex, answerLabel }" }
+      ]
+    }
+  ],
+  "validations": [
+    "tree has exactly one root node",
+    "every answer's `next` refers to an existing node id",
+    "leaf nodes have recommendation + reason; branching nodes have question + answers",
+    "path is a strictly-forward sequence of resolved answers; back removes the last step"
+  ],
+  "exports": ["summary_clipboard", "json", "print_pdf"],
+  "promotionSignals": [
+    "Multiple users need to share their path and recommendation",
+    "Decisions need to be logged for audit",
+    "The tree itself becomes editable by a team and needs versioning",
+    "Recommendations need to trigger downstream actions (tickets, emails, workflows)"
+  ],
+  "archetype": "branching-questionnaire"
+}
+</script>
+
+<script>
+"use strict";
+
+/* FLATPACK:METADATA */
+const APP_META = {
+  name: "Decision tree template",
+  version: "0.1.0",
+  description: "Branching questionnaire that ends in a recommendation.",
+  dataPolicy: "local-only",
+  persistence: "localStorage",
+  network: "none"
+};
+const STORAGE_KEY = "flatpack:decision-tree:v1";
+
+/* FLATPACK:SCHEMA — the tree. Replace this to suit your decision flow. */
+const tree = {
+  root: "start",
+  nodes: {
+    start: {
+      question: "Is more than one person going to use this tool regularly?",
+      answers: [
+        { label: "No — just me", next: "data-sensitivity", note: "Personal scope." },
+        { label: "Yes — a team or a wider group", next: "needs-audit", note: "Shared scope." }
+      ]
+    },
+    "data-sensitivity": {
+      question: "Does the data need to leave your machine — for backup, sharing, or another tool?",
+      answers: [
+        { label: "No — it can stay local", next: "rec-flatpack" },
+        { label: "Yes — it needs to be somewhere centralised", next: "rec-baseplate-lite" }
+      ]
+    },
+    "needs-audit": {
+      question: "Do you need audit logs, role-based access, or other regulated controls?",
+      answers: [
+        { label: "No — just shared access is enough", next: "rec-baseplate-lite" },
+        { label: "Yes — we need those controls", next: "rec-baseplate" }
+      ]
+    },
+    "rec-flatpack": {
+      recommendation: "Flatpack",
+      reason: "One user, local data, no shared state. A single HTML file is enough — and it survives indefinitely with no infrastructure to maintain."
+    },
+    "rec-baseplate-lite": {
+      recommendation: "Baseplate Lite",
+      reason: "You need a URL or light persistence but no real auth or audit. A small hosted app is the right shape."
+    },
+    "rec-baseplate": {
+      recommendation: "Baseplate",
+      reason: "Shared state, roles, audit, server-side secrets. This is a full-stack project. The Flatpack mental model has stopped fitting; promote the idea into a real Baseplate app."
+    }
+  }
+};
+
+/* FLATPACK:STATE */
+const initialState = { path: [], currentNodeId: tree.root };
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    if (!p || typeof p !== "object" || !Array.isArray(p.path) || typeof p.currentNodeId !== "string") return null;
+    if (!tree.nodes[p.currentNodeId]) return null;
+    return p;
+  } catch { return null; }
+}
+function saveState() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {} }
+let state = loadState() ?? structuredClone(initialState);
+
+/* FLATPACK:VALIDATION */
+function validateTree(t) {
+  const errs = [];
+  if (!t.root || !t.nodes || !t.nodes[t.root]) errs.push("root node missing");
+  for (const [id, node] of Object.entries(t.nodes || {})) {
+    const isLeaf = "recommendation" in node;
+    const isBranch = "question" in node;
+    if (isLeaf === isBranch) errs.push(`node ${id} must be exactly one of leaf | branch`);
+    if (isBranch) {
+      if (!Array.isArray(node.answers) || node.answers.length === 0) errs.push(`node ${id} has no answers`);
+      else for (const a of node.answers) {
+        if (!a.next || !t.nodes[a.next]) errs.push(`node ${id} answer "${a.label}" points to missing node "${a.next}"`);
+      }
+    }
+  }
+  return errs;
+}
+
+/* FLATPACK:CORE_LOGIC — pure functions, no DOM, no state */
+function getNode(t, id) { return t.nodes[id] || null; }
+function isLeaf(node) { return !!node && "recommendation" in node; }
+function depth(t) {
+  // Longest path from root to any leaf (assumes DAG / tree).
+  const seen = new Set();
+  function walk(id) {
+    if (seen.has(id)) return 0;
+    seen.add(id);
+    const n = t.nodes[id];
+    if (!n) return 0;
+    if (isLeaf(n)) return 1;
+    let best = 0;
+    for (const a of n.answers) best = Math.max(best, walk(a.next));
+    seen.delete(id);
+    return 1 + best;
+  }
+  return walk(t.root);
+}
+function applyAnswer(t, state, answerIndex) {
+  const node = getNode(t, state.currentNodeId);
+  if (!node || isLeaf(node)) return state;
+  const ans = node.answers[answerIndex];
+  if (!ans) return state;
+  return {
+    path: state.path.concat([{ nodeId: state.currentNodeId, answerIndex, answerLabel: ans.label }]),
+    currentNodeId: ans.next
+  };
+}
+function goBack(state) {
+  if (!state.path.length) return state;
+  const prev = state.path[state.path.length - 1];
+  return { path: state.path.slice(0, -1), currentNodeId: prev.nodeId };
+}
+function summaryText(t, state) {
+  const lines = [`${APP_META.name} — ${new Date().toLocaleString()}`, ""];
+  for (const step of state.path) {
+    const q = (getNode(t, step.nodeId) || {}).question || "";
+    lines.push(`Q: ${q}`);
+    lines.push(`A: ${step.answerLabel}`);
+    lines.push("");
+  }
+  const node = getNode(t, state.currentNodeId);
+  if (isLeaf(node)) {
+    lines.push(`Recommendation: ${node.recommendation}`);
+    lines.push(`Reason: ${node.reason}`);
+  } else {
+    lines.push(`(In progress at: ${node ? node.question : "?"})`);
+  }
+  return lines.join("\n");
+}
+
+/* FLATPACK:IMPORT_EXPORT */
+function triggerDownload(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+function exportJSON() {
+  const payload = { meta: APP_META, exportedAt: new Date().toISOString(), state };
+  triggerDownload(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }), "decision.json");
+}
+async function copySummary() {
+  try { await navigator.clipboard.writeText(summaryText(tree, state)); }
+  catch { alert("Could not copy. Try Export JSON instead."); }
+}
+function resetAll() { state = structuredClone(initialState); saveState(); }
+
+/* FLATPACK:RENDERING */
+const $ = (s) => document.querySelector(s);
+
+function renderHeader() {
+  $("#app-title").textContent = APP_META.name;
+  $("#app-purpose").textContent = APP_META.description;
+  $("#footer-version").textContent = `${APP_META.name} v${APP_META.version}`;
+}
+function renderProgress() {
+  const maxDepth = depth(tree);
+  const here = state.path.length + 1;
+  const pct = Math.min(100, Math.round((here / maxDepth) * 100));
+  $("#progress-bar").style.width = `${pct}%`;
+}
+function renderPath() {
+  const card = $("#path-card");
+  if (!state.path.length) { card.hidden = true; card.innerHTML = ""; return; }
+  card.hidden = false;
+  const items = state.path.map(step => {
+    const node = getNode(tree, step.nodeId);
+    const q = node ? node.question : "(missing)";
+    return `<div class="step"><span class="q">${escapeHtml(q)}</span><br><span class="a">→ ${escapeHtml(step.answerLabel)}</span></div>`;
+  });
+  card.innerHTML = `<strong>Your answers so far</strong>${items.join("")}`;
+}
+function renderScreen() {
+  const card = $("#screen-card");
+  const node = getNode(tree, state.currentNodeId);
+  if (!node) {
+    card.innerHTML = `<p class="muted">Unknown node: ${escapeHtml(state.currentNodeId)}.</p>`;
+    return;
+  }
+  if (isLeaf(node)) {
+    card.innerHTML = `
+      <div class="leaf">
+        <span class="badge">Recommendation</span>
+        <h2 class="rec">${escapeHtml(node.recommendation)}</h2>
+        <p class="reason">${escapeHtml(node.reason)}</p>
+        <div class="row no-print">
+          <button class="btn primary" type="button" id="copy-btn">Copy summary</button>
+          <button class="btn" type="button" id="export-json-btn">Export JSON</button>
+          <button class="btn" type="button" id="print-btn">Print</button>
+        </div>
+      </div>`;
+  } else {
+    card.innerHTML = `
+      <h2 class="question">${escapeHtml(node.question)}</h2>
+      <div class="answers no-print">
+        ${node.answers.map((a, i) => `
+          <button class="btn answer" type="button" data-answer-index="${i}">
+            <div>${escapeHtml(a.label)}</div>
+            ${a.note ? `<div class="note">${escapeHtml(a.note)}</div>` : ""}
+          </button>
+        `).join("")}
+      </div>`;
+  }
+  // The Back button is meaningful only when we've made at least one choice.
+  $("#back-btn").disabled = state.path.length === 0;
+}
+function render() { renderHeader(); renderProgress(); renderPath(); renderScreen(); saveState(); }
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+/* FLATPACK:EVENTS */
+function bindEvents() {
+  $("#screen-card").addEventListener("click", e => {
+    const btn = e.target.closest("[data-answer-index]");
+    if (!btn) return;
+    const i = Number(btn.dataset.answerIndex);
+    state = applyAnswer(tree, state, i);
+    render();
+  });
+  $("#back-btn").addEventListener("click", () => { state = goBack(state); render(); });
+  $("#restart-btn").addEventListener("click", () => {
+    if (state.path.length && !confirm("Restart? Your current path will be cleared.")) return;
+    resetAll(); render();
+  });
+  // Delegated handlers for the leaf-state buttons (rendered dynamically).
+  document.addEventListener("click", e => {
+    if (e.target.id === "copy-btn") copySummary();
+    else if (e.target.id === "export-json-btn") exportJSON();
+    else if (e.target.id === "print-btn") window.print();
+  });
+}
+
+/* FLATPACK:TEST_CASES */
+const TEST_CASES = [
+  {
+    name: "validateTree accepts the embedded tree",
+    run: () => validateTree(tree).length === 0
+  },
+  {
+    name: "validateTree flags missing-next references",
+    run: () => {
+      const bad = { root: "a", nodes: {
+        a: { question: "?", answers: [{ label: "x", next: "nope" }] }
+      }};
+      return validateTree(bad).some(s => s.includes("nope"));
+    }
+  },
+  {
+    name: "validateTree flags ambiguous leaf+branch nodes",
+    run: () => {
+      const bad = { root: "a", nodes: {
+        a: { question: "?", recommendation: "X" }
+      }};
+      return validateTree(bad).some(s => s.includes("exactly one"));
+    }
+  },
+  {
+    name: "applyAnswer advances path and current node",
+    run: () => {
+      const s = applyAnswer(tree, structuredClone(initialState), 0);
+      return s.path.length === 1 && s.currentNodeId === "data-sensitivity";
+    }
+  },
+  {
+    name: "goBack reverses applyAnswer",
+    run: () => {
+      const a = applyAnswer(tree, structuredClone(initialState), 0);
+      const b = goBack(a);
+      return b.path.length === 0 && b.currentNodeId === "start";
+    }
+  },
+  {
+    name: "summaryText includes the recommendation at a leaf",
+    run: () => {
+      let s = structuredClone(initialState);
+      s = applyAnswer(tree, s, 0);   // -> data-sensitivity
+      s = applyAnswer(tree, s, 0);   // -> rec-flatpack
+      const text = summaryText(tree, s);
+      return text.includes("Recommendation: Flatpack");
+    }
+  },
+  {
+    name: "bindEvents attaches listeners without throwing",
+    run: () => {
+      const realQS = document.querySelector;
+      const realAEL = document.addEventListener;
+      let attached = 0;
+      const mockEl = {
+        addEventListener: () => { attached++; },
+        classList: { add(){}, remove(){}, toggle(){} },
+        style: {}, dataset: {}, hidden: false, value: "", checked: false, textContent: ""
+      };
+      document.querySelector = () => mockEl;
+      document.addEventListener = () => { attached++; };
+      try { bindEvents(); return attached > 0; }
+      finally {
+        document.querySelector = realQS;
+        document.addEventListener = realAEL;
+      }
+    }
+  },
+  {
+    name: "loadState tolerates malformed stored data",
+    run: () => {
+      const realGet = localStorage.getItem;
+      localStorage.getItem = () => "not json {{{";
+      try { return loadState() === null; }
+      finally { localStorage.getItem = realGet; }
+    }
+  }
+];
+function runTests() {
+  const results = TEST_CASES.map(t => {
+    try { return { name: t.name, passed: !!t.run() }; }
+    catch (e) { return { name: t.name, passed: false, error: String(e) }; }
+  });
+  // eslint-disable-next-line no-console
+  console.table(results);
+  return results;
+}
+
+/* FLATPACK:BOOT */
+document.addEventListener("DOMContentLoaded", () => {
+  const treeErrs = validateTree(tree);
+  if (treeErrs.length) {
+    // eslint-disable-next-line no-console
+    console.warn("Tree validation errors:", treeErrs);
+  }
+  bindEvents();
+  render();
+  if (new URLSearchParams(location.search).get("test") === "1") runTests();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Flatpack: CSV cleaner template</title>
+<!-- FLATPACK:HELP
+
+  Flatpack:     CSV cleaner template
+  Version:      0.1.0
+  Purpose:      Drop a CSV, validate rows against a schema, export clean + error files.
+  Data:         local-only
+  Network:      none
+  Persistence:  localStorage (column mappings only)
+
+  HUMAN HELP
+    Inputs:   a CSV file dropped or chosen via the file picker, plus a
+              column-mapping step
+    Outputs:  clean.csv (rows that passed), errors.csv (rows + reasons),
+              and a printable summary
+    Limits:   parser handles RFC-4180 quotes and embedded newlines; very
+              large files (>50k rows) will be slow because parsing and
+              rendering happen on the main thread
+
+  AI EDITING NOTES
+    - Safe to modify:  SCHEMA, VALIDATION, RENDERING, STYLES, HTML.
+    - Edit with care:  CORE_LOGIC — the CSV parser is covered by tests;
+                       any change must keep them green.
+    - Avoid modifying: IMPORT_EXPORT without updating file naming + formats.
+    - Rules: no network, no external dependencies, no embedded secrets.
+    - Run TEST_CASES (?test=1) after changes to CORE_LOGIC or VALIDATION.
+-->
+
+<!-- FLATPACK:STYLES -->
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #fff; --ink: #1b1b1a; --muted: #6a6a66;
+    --line: #e5e5e0; --accent: #2b6cb0; --accent-ink: #fff;
+    --warn: #b45309; --error: #b91c1c; --ok: #166534;
+    --radius: 8px; --gap: 16px; --maxw: 1100px;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); line-height: 1.45; }
+  main, header, footer { max-width: var(--maxw); margin: 0 auto; padding: 24px; }
+  header { padding-bottom: 0; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  h2 { font-size: 1.05rem; margin: 0 0 12px; }
+  .muted { color: var(--muted); }
+  .privacy { background: #eef4fb; border: 1px solid #cfe0f3; color: #1e3a5f;
+    padding: 10px 12px; border-radius: var(--radius); font-size: 0.9rem; margin: 16px 0 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; margin-bottom: var(--gap); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  label { font-weight: 600; font-size: 0.95rem; display: block; margin-bottom: 4px; }
+  select, input[type="text"] { width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius); font: inherit; background: #fff; }
+  .btn { appearance: none; border: 1px solid var(--line); background: #fff; color: var(--ink); padding: 8px 14px; border-radius: var(--radius); font: inherit; cursor: pointer; }
+  .btn:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+  .btn + .btn { margin-left: 8px; }
+  .dropzone {
+    border: 2px dashed var(--line); border-radius: var(--radius); padding: 24px;
+    text-align: center; cursor: pointer; background: #fff;
+  }
+  .dropzone.drag { border-color: var(--accent); background: #f4f9ff; }
+  .alert { border-radius: var(--radius); padding: 10px 12px; margin-bottom: 12px; font-size: 0.95rem; }
+  .alert.warn { background: #fdf6e7; border: 1px solid #f3d99a; color: var(--warn); }
+  .alert.error { background: #fdecec; border: 1px solid #f3b8b8; color: var(--error); }
+  .alert.ok { background: #e9f5ec; border: 1px solid #bbe0c4; color: var(--ok); }
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  th, td { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: #fafaf7; position: sticky; top: 0; }
+  .scroll { max-height: 360px; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--gap); }
+  @media (max-width: 720px) { .stats { grid-template-columns: 1fr 1fr; } }
+  .stat { background: #fafaf7; border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; }
+  .stat .n { font-size: 1.6rem; font-weight: 700; }
+  .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; }
+  .badge.bad { background: #fdecec; color: var(--error); }
+  .badge.warn { background: #fdf6e7; color: var(--warn); }
+  .badge.ok { background: #e9f5ec; color: var(--ok); }
+  footer { color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--line); margin-top: 24px; }
+  .map-grid { display: grid; grid-template-columns: 200px 1fr; gap: 8px; align-items: center; }
+  @media print {
+    body { background: #fff; color: #000; }
+    .no-print { display: none !important; }
+    main { max-width: none; padding: 0; }
+    .card { box-shadow: none; border: 1px solid #ccc; page-break-inside: avoid; }
+    #print-report { display: block !important; }
+    .scroll { max-height: none; }
+  }
+</style>
+
+<!-- FLATPACK:HTML -->
+</head>
+<body>
+<header>
+  <h1 id="app-title">CSV cleaner</h1>
+  <p class="muted" id="app-purpose">Drop a CSV, map columns, validate rows, export a clean file.</p>
+  <div class="privacy" id="privacy-banner" role="note">
+    Local-first: this tool runs in your browser. Files are not uploaded.
+  </div>
+</header>
+
+<main>
+  <section class="card no-print" id="upload-card">
+    <h2>1. Load a CSV</h2>
+    <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Drop a CSV file or click to choose">
+      <p><strong>Drop a CSV file here</strong> or click to choose.</p>
+      <p class="muted">Files stay on your machine. Nothing is uploaded.</p>
+      <input type="file" id="file-input" accept=".csv,text/csv" hidden>
+    </div>
+    <div class="row" style="margin-top:12px;">
+      <button class="btn" type="button" id="sample-btn">Load sample data</button>
+      <span class="muted" id="file-info"></span>
+    </div>
+  </section>
+
+  <section class="card no-print" id="mapping-card" hidden>
+    <h2>2. Map columns</h2>
+    <p class="muted">Match the schema fields to the columns in your file. Mappings are remembered on this device.</p>
+    <div class="map-grid" id="mapping-grid"></div>
+  </section>
+
+  <section class="card" id="results-card" hidden>
+    <h2>3. Results</h2>
+    <div class="stats" id="stats"></div>
+    <div id="warnings" style="margin-top:12px;"></div>
+    <h2 style="margin-top:16px;">Preview</h2>
+    <div class="scroll"><table id="preview-table"></table></div>
+    <div class="row no-print" style="margin-top:12px;">
+      <button class="btn primary" type="button" id="export-clean">Export clean CSV</button>
+      <button class="btn" type="button" id="export-errors">Export errors CSV</button>
+      <button class="btn" type="button" id="print-btn">Print summary</button>
+      <button class="btn" type="button" id="reset-btn">Reset</button>
+    </div>
+  </section>
+
+  <section id="print-report" class="card" aria-label="Printable summary" hidden>
+    <h2 id="report-title">CSV cleaner summary</h2>
+    <p class="muted" id="report-subtitle"></p>
+    <table>
+      <tbody id="report-rows"></tbody>
+    </table>
+    <p class="muted" id="report-footer" style="margin-top:12px;"></p>
+  </section>
+</main>
+
+<footer>
+  <span id="footer-version"></span> · Local-only · No network · Single file
+</footer>
+
+<!-- FLATPACK:MANIFEST -->
+<script type="application/json" id="flatpack-manifest">
+{
+  "name": "CSV cleaner template",
+  "artifactType": "csv-cleaner",
+  "version": "0.1.0",
+  "scope": "personal",
+  "persistence": "localStorage",
+  "network": "none",
+  "entities": [
+    {
+      "name": "Invoice",
+      "fields": [
+        { "name": "supplier_name",  "type": "string", "required": true },
+        { "name": "invoice_date",   "type": "date",   "required": true },
+        { "name": "invoice_number", "type": "string", "required": true, "unique": true },
+        { "name": "amount",         "type": "number", "required": true, "min": 0 },
+        { "name": "currency",       "type": "enum",   "values": ["GBP","EUR","USD"], "default": "GBP" }
+      ]
+    }
+  ],
+  "validations": [
+    "supplier_name, invoice_date, invoice_number, amount are required",
+    "amount must be >= 0",
+    "invoice_date must be a valid date",
+    "invoice_number must be unique within a file",
+    "currency must be one of GBP, EUR, USD (defaults to GBP if missing)"
+  ],
+  "exports": ["clean_csv", "errors_csv", "summary_print"],
+  "promotionSignals": [
+    "Multiple reviewers need to share a batch",
+    "Validated records must be stored centrally",
+    "Audit history of imports and edits is required",
+    "Reference data (suppliers, currencies) needs to be reused across imports"
+  ],
+  "archetype": "import-validate-store"
+}
+</script>
+
+<!-- FLATPACK:METADATA -->
+<script>
+"use strict";
+
+const APP_META = {
+  name: "CSV cleaner template",
+  version: "0.1.0",
+  description: "Drop a CSV, validate against a schema, export clean and error files.",
+  dataPolicy: "local-only",
+  persistence: "localStorage",
+  network: "none"
+};
+const STORAGE_KEY = "flatpack:csv-cleaner:v1";
+
+/* FLATPACK:SCHEMA — the canonical fields. Adjust this when reusing the template. */
+const schema = {
+  supplier_name:   { type: "string", required: true,  label: "Supplier name" },
+  invoice_date:    { type: "date",   required: true,  label: "Invoice date" },
+  invoice_number:  { type: "string", required: true,  unique: true, label: "Invoice number" },
+  amount:          { type: "number", required: true,  min: 0, label: "Amount" },
+  currency:        { type: "string", required: false, oneOf: ["GBP","EUR","USD"], default: "GBP", label: "Currency" }
+};
+const schemaFields = Object.keys(schema);
+
+/* FLATPACK:STATE */
+const initialState = {
+  fileName: null,
+  rawHeaders: [],
+  rawRows: [],
+  mapping: {},
+  cleaned: [],
+  errors: []
+};
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    return { ...structuredClone(initialState), mapping: parsed.mapping || {} };
+  } catch { return null; }
+}
+function saveState() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ mapping: state.mapping })); } catch {}
+}
+let state = loadState() ?? structuredClone(initialState);
+
+/* FLATPACK:CORE_LOGIC — pure: CSV parsing, validation, transformation. No DOM. */
+function parseCSV(text) {
+  // RFC 4180 minimal parser. Handles quotes, escaped quotes, CRLF, embedded newlines.
+  const rows = [];
+  let row = [];
+  let field = "";
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i+1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else {
+        field += c;
+      }
+    } else {
+      if (c === '"') inQuotes = true;
+      else if (c === ',') { row.push(field); field = ""; }
+      else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ""; }
+      else if (c === '\r') { /* swallow; \r\n handled by \n */ }
+      else field += c;
+    }
+  }
+  if (field !== "" || row.length) { row.push(field); rows.push(row); }
+  // Drop trailing empty rows
+  while (rows.length && rows[rows.length-1].every(v => v === "")) rows.pop();
+  return rows;
+}
+function toCSV(rows) {
+  return rows.map(r => r.map(toCSVCell).join(",")).join("\r\n");
+}
+function toCSVCell(v) {
+  const s = v == null ? "" : String(v);
+  if (/[",\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+function autoMap(headers) {
+  // Best-effort match: case-insensitive substring across schema fields.
+  const map = {};
+  for (const field of schemaFields) {
+    const want = field.toLowerCase().replace(/[^a-z0-9]/g, "");
+    let found = "";
+    for (const h of headers) {
+      const norm = String(h).toLowerCase().replace(/[^a-z0-9]/g, "");
+      if (norm === want) { found = h; break; }
+      if (!found && norm.includes(want)) found = h;
+    }
+    map[field] = found;
+  }
+  return map;
+}
+function applyMapping(rawRows, headers, mapping) {
+  const idx = {};
+  for (const [field, header] of Object.entries(mapping)) {
+    idx[field] = header ? headers.indexOf(header) : -1;
+  }
+  return rawRows.map(r => {
+    const obj = {};
+    for (const field of schemaFields) {
+      const i = idx[field];
+      obj[field] = i >= 0 ? (r[i] ?? "") : "";
+    }
+    return obj;
+  });
+}
+function validateRow(row, rules) {
+  const errs = [];
+  for (const [k, r] of Object.entries(rules)) {
+    const v = row[k];
+    const empty = v === undefined || v === null || v === "";
+    if (r.required && empty) { errs.push(`${r.label} missing`); continue; }
+    if (empty) continue;
+    if (r.type === "number") {
+      const n = Number(v);
+      if (!Number.isFinite(n)) { errs.push(`${r.label} not a number`); continue; }
+      if (r.min !== undefined && n < r.min) errs.push(`${r.label} < ${r.min}`);
+    }
+    if (r.type === "date") {
+      const d = new Date(v);
+      if (Number.isNaN(d.getTime())) errs.push(`${r.label} not a valid date`);
+    }
+    if (r.oneOf && !r.oneOf.includes(String(v))) {
+      errs.push(`${r.label} not in [${r.oneOf.join(", ")}]`);
+    }
+  }
+  return errs;
+}
+function cleanAndValidate(rawRows, headers, mapping, rules) {
+  const mapped = applyMapping(rawRows, headers, mapping);
+  const seenUnique = {};
+  for (const k of Object.keys(rules)) if (rules[k].unique) seenUnique[k] = new Map();
+
+  const cleaned = [];
+  const errors = [];
+  mapped.forEach((row, i) => {
+    const rowNum = i + 2; // header is row 1
+    const errs = validateRow(row, rules);
+    // Apply defaults for non-required missing values
+    for (const k of Object.keys(rules)) {
+      if (rules[k].default !== undefined && (row[k] === "" || row[k] == null)) {
+        row[k] = rules[k].default;
+      }
+    }
+    // Uniqueness
+    for (const k of Object.keys(seenUnique)) {
+      const v = row[k];
+      if (!v) continue;
+      const prior = seenUnique[k].get(v);
+      if (prior !== undefined) errs.push(`${rules[k].label} duplicates row ${prior}`);
+      else seenUnique[k].set(v, rowNum);
+    }
+    if (errs.length) errors.push({ row: rowNum, reasons: errs, original: row });
+    else cleaned.push(row);
+  });
+  return { cleaned, errors };
+}
+
+/* FLATPACK:IMPORT_EXPORT */
+function exportCleanCSV() {
+  const header = schemaFields;
+  const rows = [header, ...state.cleaned.map(r => header.map(k => r[k]))];
+  triggerDownload(new Blob([toCSV(rows)], { type: "text/csv;charset=utf-8" }), filename("clean"));
+}
+function exportErrorsCSV() {
+  const header = ["row", "reasons", ...schemaFields];
+  const rows = [header, ...state.errors.map(e => [e.row, e.reasons.join("; "), ...schemaFields.map(k => e.original[k])])];
+  triggerDownload(new Blob([toCSV(rows)], { type: "text/csv;charset=utf-8" }), filename("errors"));
+}
+function filename(suffix) {
+  const base = (state.fileName || "input").replace(/\.csv$/i, "");
+  return `${base}.${suffix}.csv`;
+}
+function triggerDownload(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+function resetAll() {
+  const keepMapping = state.mapping;
+  state = structuredClone(initialState);
+  state.mapping = keepMapping;
+  saveState();
+}
+
+/* FLATPACK:RENDERING */
+const $ = (s, r=document) => r.querySelector(s);
+const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
+
+function renderHeader() {
+  $("#app-title").textContent = APP_META.name;
+  $("#app-purpose").textContent = APP_META.description;
+  $("#privacy-banner").textContent = "Local-first: this tool runs in your browser. Files are not uploaded. Column mappings are saved locally on this device.";
+  $("#footer-version").textContent = `${APP_META.name} v${APP_META.version}`;
+}
+function renderMapping() {
+  const card = $("#mapping-card");
+  const grid = $("#mapping-grid");
+  if (!state.rawHeaders.length) { card.hidden = true; grid.innerHTML = ""; return; }
+  card.hidden = false;
+  grid.innerHTML = schemaFields.map(field => `
+    <label for="map-${field}">${escapeHtml(schema[field].label)}${schema[field].required ? " *" : ""}</label>
+    <select id="map-${field}" data-map-field="${field}">
+      <option value="">— none —</option>
+      ${state.rawHeaders.map(h => `<option value="${escapeAttr(h)}" ${state.mapping[field] === h ? "selected" : ""}>${escapeHtml(h)}</option>`).join("")}
+    </select>
+  `).join("");
+}
+function renderResults() {
+  const card = $("#results-card");
+  const report = $("#print-report");
+  if (!state.rawRows.length) { card.hidden = true; report.hidden = true; return; }
+  card.hidden = false;
+  report.hidden = false;
+
+  const totalRows = state.rawRows.length;
+  const cleanCount = state.cleaned.length;
+  const errorCount = state.errors.length;
+  $("#stats").innerHTML = `
+    <div class="stat"><div class="muted">Rows in file</div><div class="n">${totalRows}</div></div>
+    <div class="stat"><div class="muted">Clean</div><div class="n" style="color: var(--ok)">${cleanCount}</div></div>
+    <div class="stat"><div class="muted">Errors</div><div class="n" style="color: var(--error)">${errorCount}</div></div>
+    <div class="stat"><div class="muted">Columns mapped</div><div class="n">${schemaFields.filter(f => state.mapping[f]).length}/${schemaFields.length}</div></div>
+  `;
+
+  const unmapped = schemaFields.filter(f => schema[f].required && !state.mapping[f]);
+  $("#warnings").innerHTML = unmapped.length
+    ? `<div class="alert warn">Map the required fields: ${unmapped.map(f => schema[f].label).join(", ")}.</div>`
+    : (errorCount ? `<div class="alert warn">${errorCount} row(s) need attention. Download the errors CSV for details.</div>` : `<div class="alert ok">All rows pass validation.</div>`);
+
+  const preview = [...state.cleaned.slice(0, 10).map(r => ({ status: "ok", row: r, reasons: "" })),
+                   ...state.errors.slice(0, 10).map(e => ({ status: "bad", row: e.original, reasons: e.reasons.join("; ") }))];
+  $("#preview-table").innerHTML = `
+    <thead><tr><th>Status</th>${schemaFields.map(f => `<th>${escapeHtml(schema[f].label)}</th>`).join("")}<th>Issues</th></tr></thead>
+    <tbody>${preview.map(p => `
+      <tr>
+        <td><span class="badge ${p.status === "ok" ? "ok" : "bad"}">${p.status === "ok" ? "OK" : "Error"}</span></td>
+        ${schemaFields.map(f => `<td>${escapeHtml(String(p.row[f] ?? ""))}</td>`).join("")}
+        <td class="muted">${escapeHtml(p.reasons)}</td>
+      </tr>
+    `).join("")}</tbody>
+  `;
+
+  $("#report-title").textContent = `${APP_META.name} — ${state.fileName || "(unsaved)"}`;
+  $("#report-subtitle").textContent = `${new Date().toLocaleString()} · ${totalRows} rows · ${cleanCount} clean · ${errorCount} errors`;
+  const reasonsCount = {};
+  for (const e of state.errors) for (const r of e.reasons) reasonsCount[r] = (reasonsCount[r] || 0) + 1;
+  const topReasons = Object.entries(reasonsCount).sort((a,b) => b[1]-a[1]).slice(0,5);
+  $("#report-rows").innerHTML = topReasons.length
+    ? topReasons.map(([reason,n]) => `<tr><th scope="row">${escapeHtml(reason)}</th><td>${n}</td></tr>`).join("")
+    : `<tr><td colspan="2" class="muted">No validation issues to summarise.</td></tr>`;
+  $("#report-footer").textContent = `Generated by ${APP_META.name} v${APP_META.version} · local-only.`;
+
+  $("#export-clean").disabled = cleanCount === 0;
+  $("#export-errors").disabled = errorCount === 0;
+}
+function render() {
+  renderHeader();
+  renderMapping();
+  renderResults();
+  saveState();
+}
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function escapeAttr(s) { return escapeHtml(s); }
+
+/* FLATPACK:EVENTS */
+function loadCSVText(text, name) {
+  const rows = parseCSV(text);
+  if (!rows.length) { alert("No rows found in file."); return; }
+  state.fileName = name;
+  state.rawHeaders = rows[0].map(h => String(h).trim());
+  state.rawRows = rows.slice(1);
+  // Pre-fill mapping: auto-map, then prefer any saved mapping that still applies.
+  const auto = autoMap(state.rawHeaders);
+  const merged = {};
+  for (const f of schemaFields) {
+    const saved = state.mapping?.[f];
+    merged[f] = (saved && state.rawHeaders.includes(saved)) ? saved : auto[f];
+  }
+  state.mapping = merged;
+  recompute();
+}
+function recompute() {
+  const { cleaned, errors } = cleanAndValidate(state.rawRows, state.rawHeaders, state.mapping, schema);
+  state.cleaned = cleaned;
+  state.errors = errors;
+  render();
+}
+function bindEvents() {
+  const dz = $("#dropzone");
+  const fileInput = $("#file-input");
+
+  dz.addEventListener("click", () => fileInput.click());
+  dz.addEventListener("keydown", e => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); }
+  });
+  ["dragenter","dragover"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add("drag"); }));
+  ["dragleave","drop"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove("drag"); }));
+  dz.addEventListener("drop", async e => {
+    const file = e.dataTransfer.files?.[0];
+    if (file) await handleFile(file);
+  });
+  fileInput.addEventListener("change", async e => {
+    const file = e.target.files?.[0];
+    if (file) await handleFile(file);
+  });
+
+  $("#sample-btn").addEventListener("click", () => {
+    loadCSVText(SAMPLE_CSV, "sample.csv");
+    $("#file-info").textContent = `Loaded sample (${state.rawRows.length} rows).`;
+  });
+
+  document.addEventListener("change", e => {
+    const t = e.target;
+    if (t && t.dataset && t.dataset.mapField) {
+      state.mapping[t.dataset.mapField] = t.value || "";
+      recompute();
+    }
+  });
+
+  $("#export-clean").addEventListener("click", exportCleanCSV);
+  $("#export-errors").addEventListener("click", exportErrorsCSV);
+  $("#print-btn").addEventListener("click", () => window.print());
+  $("#reset-btn").addEventListener("click", () => { resetAll(); render(); $("#file-info").textContent = ""; });
+}
+async function handleFile(file) {
+  const text = await file.text();
+  loadCSVText(text, file.name);
+  $("#file-info").textContent = `${file.name} — ${state.rawRows.length} rows.`;
+}
+
+/* Sample data — embedded so the tool works offline with zero setup. */
+const SAMPLE_CSV =
+`supplier_name,invoice_date,invoice_number,amount,currency
+Acme Ltd,2026-01-15,INV-001,1200.50,GBP
+Borealis Ops,2026-01-18,INV-002,840.00,EUR
+Acme Ltd,2026-01-22,INV-003,640.00,GBP
+Northwind,2026-01-25,,250.00,GBP
+Northwind,2026-01-25,INV-002,250.00,GBP
+Initech,bad-date,INV-004,99.00,USD
+Globex,2026-02-01,INV-005,-45.00,GBP
+"Wayne, Inc.",2026-02-03,INV-006,3200.00,USD
+Stark Industries,2026-02-04,INV-007,18000.00,JPY
+Cyberdyne,2026-02-10,INV-008,500.00,USD
+`;
+
+/* FLATPACK:TEST_CASES */
+const TEST_CASES = [
+  {
+    name: "parseCSV handles quoted commas",
+    run: () => {
+      const r = parseCSV(`a,b,c\n"hello, world",2,3\n`);
+      return r.length === 2 && r[1][0] === "hello, world";
+    }
+  },
+  {
+    name: "parseCSV handles escaped quotes",
+    run: () => {
+      const r = parseCSV(`a\n"she said ""hi"""\n`);
+      return r[1][0] === 'she said "hi"';
+    }
+  },
+  {
+    name: "validateRow flags missing required",
+    run: () => {
+      const errs = validateRow({ supplier_name: "", invoice_date: "2026-01-01", invoice_number: "X", amount: 1, currency: "GBP" }, schema);
+      return errs.some(e => e.includes("Supplier name"));
+    }
+  },
+  {
+    name: "cleanAndValidate detects duplicates",
+    run: () => {
+      const rows = [["A","2026-01-01","X",1,"GBP"], ["B","2026-01-02","X",2,"GBP"]];
+      const headers = ["supplier_name","invoice_date","invoice_number","amount","currency"];
+      const mapping = Object.fromEntries(headers.map(h => [h, h]));
+      const { errors } = cleanAndValidate(rows, headers, mapping, schema);
+      return errors.length === 1 && errors[0].reasons.some(r => r.includes("duplicates"));
+    }
+  },
+  {
+    name: "toCSV round-trip preserves embedded commas",
+    run: () => {
+      const out = toCSV([["a","b"],["x,y","z"]]);
+      const back = parseCSV(out);
+      return back[1][0] === "x,y";
+    }
+  },
+  {
+    name: "bindEvents attaches listeners without throwing",
+    run: () => {
+      const realQS = document.querySelector;
+      const realAEL = document.addEventListener;
+      let attached = 0;
+      const mockEl = {
+        addEventListener: () => { attached++; },
+        classList: { add(){}, remove(){}, toggle(){} },
+        style: {}, dataset: {}, hidden: false, value: "", checked: false, textContent: ""
+      };
+      document.querySelector = () => mockEl;
+      document.addEventListener = () => { attached++; };
+      try { bindEvents(); return attached > 0; }
+      finally {
+        document.querySelector = realQS;
+        document.addEventListener = realAEL;
+      }
+    }
+  },
+  {
+    name: "loadState tolerates malformed stored data",
+    run: () => {
+      const realGet = localStorage.getItem;
+      localStorage.getItem = () => "not json {{{";
+      try { return loadState() === null; }
+      finally { localStorage.getItem = realGet; }
+    }
+  }
+];
+function runTests() {
+  const results = TEST_CASES.map(t => {
+    try { return { name: t.name, passed: !!t.run() }; }
+    catch (e) { return { name: t.name, passed: false, error: String(e) }; }
+  });
+  // eslint-disable-next-line no-console
+  console.table(results);
+  return results;
+}
+
+/* FLATPACK:BOOT */
+document.addEventListener("DOMContentLoaded", () => {
+  bindEvents();
+  render();
+  if (new URLSearchParams(location.search).get("test") === "1") runTests();
+});
+</script>
+</body>
+</html>

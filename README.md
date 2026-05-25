@@ -1,0 +1,173 @@
+# Flatpack
+
+**A standard for personal AI-built tools.**
+
+Flatpack gives AI coding agents a disciplined way to produce
+self-contained HTML utilities that run locally, need no backend, make
+no default network calls, and can be saved, reopened, sent, printed,
+exported, and edited later.
+
+> **Flatpack is the file format for personal software.
+> Baseplate is the foundation for shared software.**
+
+## Why this exists
+
+AI has made personal software viable. Anyone can ask a model for a
+small custom tool and get one. But the output usually lives in a chat
+window, which is the worst possible place to keep something you want
+to use again next month.
+
+Flatpack solves the form factor, not the generation. Any agent —
+ChatGPT, Claude, Cursor, Windsurf, your local model — can produce
+a Flatpack. The spec is what makes it portable, inspectable, and
+editable later.
+
+> **Artifacts live in the chat. Flatpacks leave the chat.**
+
+## What a Flatpack is
+
+A single-file, local-first HTML tool with a stable internal structure.
+
+- Opens by double-clicking `index.html`.
+- No backend, no build step, no `npm install`.
+- No network calls by default.
+- No embedded secrets, no telemetry, no external dependencies.
+- Standard `FLATPACK:*` section markers so a future agent can edit it
+  safely without re-architecting it. **Agent-editable** is the
+  load-bearing property — the rarest one, and the reason the format
+  compounds over time.
+- An inline `FLATPACK:HELP` block consolidating purpose, inputs,
+  outputs, limits, and AI editing notes.
+- An inline `FLATPACK:MANIFEST` JSON block describing entities,
+  validations, exports, archetype, and promotion signals — the bridge
+  to Baseplate. Schema in [`manifest.schema.json`](manifest.schema.json).
+- An inline `TEST_CASES` block, runnable via `?test=1`, including a
+  `bindEvents` smoke test and a `loadState` migration test.
+
+The full constraints live in [`SPEC.md`](SPEC.md). They are not
+suggestions. Templates are not a framework: **the shape is the API**.
+
+## What Flatpack is not
+
+- Not a generator. The AI generates; Flatpack is the format the AI
+  generates *into*.
+- Not a CLI. No `npx flatpack create`. Not yet, possibly not ever.
+- Not a hosted product. No accounts. No platform.
+- Not a Baseplate Lite. See "Promotion" below.
+
+## Personal vs shared software
+
+The promotion axis is binary and observable:
+
+| | Flatpack | Baseplate |
+|---|---|---|
+| Pronoun | **my** tool | **our** tool |
+| Users | one (or one at a time) | many, concurrently |
+| State | a file on a disk | a database |
+| Auth | none | accounts, roles |
+| Network | none by default | API + clients |
+| Default risk | overbuilding | underbuilding |
+| Lifetime | until you stop opening it | until you decommission it |
+| Trigger to promote | a second person needs to use it | — |
+
+The "discard" framing is misleading — people rarely consciously
+discard a useful tool, they just stop opening it. The honest version:
+**personal scope by default; promote when it stops being personal.**
+
+## What's in this repo
+
+```
+README.md                  This file
+SPEC.md                    What a Flatpack is, precisely
+QUALITY_CHECKLIST.md       Pass/fail review checklist
+manifest.schema.json       JSON Schema for the inline manifest (docs only)
+prompts/
+  generate-flatpack.md     Pasteable into CLAUDE.md / .cursorrules — the headline artifact
+  modify-flatpack.md       How to brief an agent to edit one safely
+  review-flatpack.md       How to brief an agent to grade one
+  promote-flatpack.md      How to turn a Flatpack into a Baseplate promotion plan
+templates/
+  calculator.html          Inputs → computed result → printable summary
+  csv-cleaner.html         Drop a CSV, validate, export clean + error files
+  checklist.html           Sections, progress, notes, local save, print
+  report-builder.html      Guided form → Markdown / printable report
+  decision-tree.html       Branching questions → recommendation
+examples/
+  invoice-cleaner.html     CSV cleaner specialised for supplier invoices
+  pricing-calculator.html  Client project quote with discount, tax, proposal print
+  case-chronology-helper.html  Date-ordered event log with tags, filters, print
+```
+
+No CLI, no platform, no hosted service. The repo *is* the product.
+
+## How to use it
+
+### As a human
+
+Open any file in `templates/` directly in your browser. Each one runs
+on its own with sample data. Save a copy, edit the `APP_META` block at
+the top, and you have a starting point.
+
+### As an agent (generating)
+
+Read [`SPEC.md`](SPEC.md), pick the closest template, follow
+[`prompts/generate-flatpack.md`](prompts/generate-flatpack.md), and
+pass [`QUALITY_CHECKLIST.md`](QUALITY_CHECKLIST.md) before declaring done.
+
+### As an agent (editing)
+
+Read [`prompts/modify-flatpack.md`](prompts/modify-flatpack.md) first.
+The section markers inside the file tell you which regions are safe
+to change. Bump `APP_META.version`. Migrate persisted state. Run
+`?test=1`.
+
+### As an agent (reviewing)
+
+Read [`prompts/review-flatpack.md`](prompts/review-flatpack.md) and
+walk the checklist. Honest, binary, brief.
+
+## Promotion
+
+When a Flatpack stops being **my tool** and becomes **our tool**, it is
+ready to be **promoted** into a Baseplate project.
+
+> **Flatpack is designed to be promoted, not automatically converted.**
+
+A Flatpack is one HTML file; a Baseplate project is a full stack.
+There is no button that transmutes one into the other. What promotes
+is the *understanding* embedded in the Flatpack: schema, validation,
+core logic, exports, sample data, edge cases, test cases. The inline
+`FLATPACK:MANIFEST` JSON block is the bridge that makes that
+understanding machine-readable — an agent reads it to produce a
+Baseplate promotion plan instead of guessing.
+
+The original Flatpack is preserved as `reference/original-flatpack.html`
+inside the new Baseplate project, alongside `reference/promotion-plan.md`.
+It stays useful for fast iteration and side-by-side parity checks while
+the production version is being built.
+
+> **Flatpack is not a smaller Baseplate. It is the proving ground
+> before Baseplate.**
+>
+> When a tool is just for you, keep it flat. When people start
+> depending on it, give it a base.
+
+See [`SPEC.md`](SPEC.md) §8 for the carry-over table and
+[`prompts/promote-flatpack.md`](prompts/promote-flatpack.md) for the
+agent flow.
+
+## Branding
+
+Flatpack is a sibling project, lightly endorsed by Baseplate:
+
+```
+Flatpack
+A Baseplate project
+```
+
+Not "Baseplate Flatpack." Part of Flatpack's job is to say *do not use
+Baseplate for this yet.*
+
+## License
+
+MIT.

@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Case chronology helper</title>
+<!-- FLATPACK:HELP
+
+  Flatpack:     Case chronology helper (example)
+  Version:      0.1.0
+  Purpose:      Build a date-ordered chronology of events for a matter:
+                date, event, source/exhibit, tags, notes. Filter, search,
+                sort, export, print.
+  Data:         local-only (sensitive content stays on device)
+  Network:      none
+  Persistence:  localStorage
+
+  Intended for early-stage matter preparation, internal review,
+  workshop prep, or personal note-keeping. Not a system of record.
+
+  HUMAN HELP
+    Inputs:   one entry at a time via the form, or imported via JSON
+    Outputs:  filterable, searchable, sortable list; JSON export
+              (round-trippable); CSV export; printable chronology
+    Limits:   single user; no attribution; no audit trail; not a system
+              of record — promote to Baseplate if more than one person
+              needs to contribute or rely on it
+
+  AI EDITING NOTES
+    - Safe to modify:  SCHEMA, RENDERING, STYLES.
+    - Edit with care:  STATE — bump STORAGE_KEY if the entry shape
+                       changes.
+    - Avoid modifying: IMPORT_EXPORT without updating filename
+                       expectations.
+    - Rules: no network, no external dependencies, no embedded secrets.
+    - Run TEST_CASES (?test=1) after changes to CORE_LOGIC or VALIDATION.
+-->
+
+<!-- FLATPACK:STYLES -->
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #fff; --ink: #1b1b1a; --muted: #6a6a66;
+    --line: #e5e5e0; --accent: #2b6cb0; --accent-ink: #fff;
+    --warn: #b45309; --error: #b91c1c; --ok: #166534;
+    --tag: #eaeae3; --tag-ink: #3a3a36;
+    --radius: 8px; --gap: 16px; --maxw: 1000px;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); line-height: 1.45; }
+  main, header, footer { max-width: var(--maxw); margin: 0 auto; padding: 24px; }
+  header { padding-bottom: 0; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  h2 { font-size: 1.05rem; margin: 0 0 12px; }
+  .muted { color: var(--muted); }
+  .privacy { background: #eef4fb; border: 1px solid #cfe0f3; color: #1e3a5f;
+    padding: 10px 12px; border-radius: var(--radius); font-size: 0.9rem; margin: 16px 0 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; margin-bottom: var(--gap); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  label { display: block; font-weight: 600; margin-bottom: 4px; font-size: 0.95rem; }
+  input[type="text"], input[type="date"], textarea, select {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius);
+    font: inherit; background: #fff; color: var(--ink);
+  }
+  textarea { min-height: 70px; resize: vertical; }
+  .btn { appearance: none; border: 1px solid var(--line); background: #fff; color: var(--ink);
+    padding: 8px 14px; border-radius: var(--radius); font: inherit; cursor: pointer; }
+  .btn:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .btn.danger { color: var(--error); border-color: #f3b8b8; }
+  .btn + .btn { margin-left: 8px; }
+  .form-grid {
+    display: grid; gap: 10px;
+    grid-template-columns: 150px 1fr 1fr;
+  }
+  @media (max-width: 720px) { .form-grid { grid-template-columns: 1fr; } }
+  .field { display: flex; flex-direction: column; }
+
+  .filters { display: grid; gap: 10px; grid-template-columns: 1fr 1fr auto; align-items: end; }
+  @media (max-width: 720px) { .filters { grid-template-columns: 1fr; } }
+
+  ul.entries { list-style: none; padding: 0; margin: 0; }
+  li.entry { display: grid; grid-template-columns: 110px 1fr auto; gap: 14px; padding: 14px 0;
+             border-bottom: 1px solid var(--line); align-items: start; }
+  li.entry:last-child { border-bottom: none; }
+  li.entry .date { font-variant-numeric: tabular-nums; font-weight: 700; }
+  li.entry .body .event { font-weight: 600; margin-bottom: 4px; }
+  li.entry .body .source { color: var(--muted); font-size: 0.9rem; }
+  li.entry .body .notes { margin-top: 6px; white-space: pre-wrap; }
+  .tags { margin-top: 6px; }
+  .tag { display: inline-block; background: var(--tag); color: var(--tag-ink);
+    padding: 2px 8px; border-radius: 999px; font-size: 0.8rem; margin: 2px 4px 2px 0; }
+  .tag-toggle { cursor: pointer; border: 1px solid transparent; }
+  .tag-toggle.active { background: var(--accent); color: var(--accent-ink); }
+
+  .actions { display: flex; flex-direction: column; gap: 6px; }
+  .actions .btn { padding: 4px 10px; font-size: 0.85rem; }
+
+  footer { color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--line); margin-top: 24px; }
+
+  /* Edit dialog */
+  dialog { border: 1px solid var(--line); border-radius: var(--radius); max-width: 600px; width: 95%; padding: 20px; }
+  dialog::backdrop { background: rgba(0,0,0,0.3); }
+
+  @media print {
+    body { background: #fff; color: #000; }
+    .no-print { display: none !important; }
+    main { max-width: none; padding: 0; }
+    .card { box-shadow: none; border: none; padding: 0; }
+    li.entry { page-break-inside: avoid; }
+    .tag { border: 1px solid #666; background: transparent; color: #000; }
+    .actions { display: none; }
+  }
+</style>
+
+<!-- FLATPACK:HTML -->
+</head>
+<body>
+<header>
+  <h1 id="app-title">Case chronology helper</h1>
+  <p class="muted" id="app-purpose">Build a date-ordered list of events for a matter. Filter by tag, search, export, print.</p>
+  <div class="privacy" id="privacy-banner" role="note">
+    Local-first: entries are saved on this device only. Nothing is uploaded.
+    This is a working tool, not a system of record.
+  </div>
+</header>
+
+<main>
+  <section class="card no-print" aria-labelledby="add-h">
+    <h2 id="add-h">Add an entry</h2>
+    <form id="add-form" novalidate>
+      <div class="form-grid">
+        <div class="field">
+          <label for="f-date">Date *</label>
+          <input id="f-date" name="date" type="date" required>
+        </div>
+        <div class="field">
+          <label for="f-event">Event *</label>
+          <input id="f-event" name="event" type="text" placeholder="Short description" required>
+        </div>
+        <div class="field">
+          <label for="f-source">Source / exhibit</label>
+          <input id="f-source" name="source" type="text" placeholder="e.g. Exhibit C, email 14/3">
+        </div>
+        <div class="field" style="grid-column: 1 / span 3;">
+          <label for="f-tags">Tags (comma-separated)</label>
+          <input id="f-tags" name="tags" type="text" placeholder="e.g. liability, conduct, payment">
+        </div>
+        <div class="field" style="grid-column: 1 / span 3;">
+          <label for="f-notes">Notes</label>
+          <textarea id="f-notes" name="notes"></textarea>
+        </div>
+      </div>
+      <div class="row" style="margin-top:12px;">
+        <button class="btn primary" type="submit">Add entry</button>
+        <button class="btn" type="button" id="sample-btn">Load sample</button>
+        <button class="btn" type="button" id="reset-btn">Reset all</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="card no-print" aria-labelledby="filters-h">
+    <h2 id="filters-h">Filter</h2>
+    <div class="filters">
+      <div class="field">
+        <label for="q">Search</label>
+        <input id="q" type="text" placeholder="Search event, source, notes">
+      </div>
+      <div class="field">
+        <label for="sort">Sort</label>
+        <select id="sort">
+          <option value="asc">Oldest first</option>
+          <option value="desc">Newest first</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>&nbsp;</label>
+        <button class="btn" type="button" id="clear-filters">Clear filters</button>
+      </div>
+    </div>
+    <div class="tags" id="tag-filters" style="margin-top:10px;"></div>
+  </section>
+
+  <section class="card" id="entries-card" aria-labelledby="entries-h">
+    <div class="row no-print" style="justify-content: space-between;">
+      <h2 id="entries-h" style="margin:0;">Chronology <span class="muted" id="entry-count"></span></h2>
+      <div>
+        <button class="btn" type="button" id="export-json-btn">Export JSON</button>
+        <button class="btn" type="button" id="export-csv-btn">Export CSV</button>
+        <button class="btn" type="button" id="import-json-btn">Import JSON</button>
+        <button class="btn primary" type="button" id="print-btn">Print</button>
+        <input type="file" id="import-file" accept="application/json" hidden>
+      </div>
+    </div>
+    <ul class="entries" id="entries"></ul>
+  </section>
+</main>
+
+<dialog id="edit-dialog" aria-labelledby="edit-h">
+  <h2 id="edit-h">Edit entry</h2>
+  <form id="edit-form" method="dialog">
+    <input type="hidden" id="edit-id">
+    <div class="form-grid">
+      <div class="field">
+        <label for="edit-date">Date *</label>
+        <input id="edit-date" name="date" type="date" required>
+      </div>
+      <div class="field" style="grid-column: 2 / span 2;">
+        <label for="edit-event">Event *</label>
+        <input id="edit-event" name="event" type="text" required>
+      </div>
+      <div class="field" style="grid-column: 1 / span 3;">
+        <label for="edit-source">Source / exhibit</label>
+        <input id="edit-source" name="source" type="text">
+      </div>
+      <div class="field" style="grid-column: 1 / span 3;">
+        <label for="edit-tags">Tags (comma-separated)</label>
+        <input id="edit-tags" name="tags" type="text">
+      </div>
+      <div class="field" style="grid-column: 1 / span 3;">
+        <label for="edit-notes">Notes</label>
+        <textarea id="edit-notes" name="notes"></textarea>
+      </div>
+    </div>
+    <div class="row" style="margin-top:12px; justify-content: flex-end;">
+      <button class="btn" type="button" id="edit-cancel">Cancel</button>
+      <button class="btn primary" type="submit">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<footer>
+  <span id="footer-version"></span> · Local-only · No network · Single file
+</footer>
+
+<!-- FLATPACK:MANIFEST -->
+<script type="application/json" id="flatpack-manifest">
+{
+  "name": "Case chronology helper",
+  "artifactType": "chronology",
+  "version": "0.1.0",
+  "scope": "personal",
+  "persistence": "localStorage",
+  "network": "none",
+  "entities": [
+    {
+      "name": "Event",
+      "fields": [
+        { "name": "id",     "type": "string", "required": true, "unique": true },
+        { "name": "date",   "type": "date",   "required": true },
+        { "name": "event",  "type": "string", "required": true },
+        { "name": "source", "type": "string" },
+        { "name": "tags",   "type": "list[string]", "note": "lowercased, comma-separated input" },
+        { "name": "notes",  "type": "text" }
+      ]
+    }
+  ],
+  "validations": [
+    "date and event are required",
+    "tags are normalised to lower case and trimmed",
+    "search matches event, source, notes, and tags"
+  ],
+  "exports": ["json", "csv", "print_pdf"],
+  "imports": ["json"],
+  "promotionSignals": [
+    "Multiple people contribute events to the same chronology",
+    "The chronology becomes a discoverable record across matters",
+    "Tagging vocabulary needs to be standardised across users",
+    "Per-user attribution and timestamping of changes is required",
+    "Linking events to other systems (documents, exhibits, parties) is needed"
+  ],
+  "archetype": "case-workspace"
+}
+</script>
+
+<script>
+"use strict";
+
+/* FLATPACK:METADATA */
+const APP_META = {
+  name: "Case chronology helper",
+  version: "0.1.0",
+  description: "Build a date-ordered chronology of events for a matter. Filter by tag, search, export, print.",
+  dataPolicy: "local-only",
+  persistence: "localStorage",
+  network: "none"
+};
+const STORAGE_KEY = "flatpack:case-chronology:v1";
+
+/* FLATPACK:SCHEMA */
+const schema = {
+  date:   { type: "date",   required: true,  label: "Date" },
+  event:  { type: "string", required: true,  label: "Event" },
+  source: { type: "string", required: false, label: "Source / exhibit" },
+  tags:   { type: "list",   required: false, label: "Tags" },
+  notes:  { type: "string", required: false, label: "Notes" }
+};
+
+/* FLATPACK:STATE */
+const initialState = {
+  entries: [],
+  filters: { q: "", tags: [], sort: "asc" }
+};
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    if (!p || !Array.isArray(p.entries)) return null;
+    return { entries: p.entries, filters: { ...initialState.filters, ...(p.filters || {}) } };
+  } catch { return null; }
+}
+function saveState() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {} }
+let state = loadState() ?? structuredClone(initialState);
+
+/* FLATPACK:VALIDATION */
+function validateEntry(e) {
+  const errs = [];
+  if (!e.date) errs.push("Date is required.");
+  else if (Number.isNaN(new Date(e.date).getTime())) errs.push("Date is not valid.");
+  if (!e.event || !e.event.trim()) errs.push("Event is required.");
+  return errs;
+}
+
+/* FLATPACK:CORE_LOGIC — pure */
+function parseTags(s) {
+  return String(s || "")
+    .split(",")
+    .map(t => t.trim().toLowerCase())
+    .filter(Boolean);
+}
+function makeId() {
+  return "e_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+}
+function applyFilters(entries, filters) {
+  const q = (filters.q || "").trim().toLowerCase();
+  const wantTags = filters.tags || [];
+  const filtered = entries.filter(e => {
+    if (wantTags.length && !wantTags.every(t => (e.tags || []).includes(t))) return false;
+    if (q) {
+      const hay = [e.event, e.source, e.notes, (e.tags || []).join(" ")].join(" ").toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  filtered.sort((a, b) => {
+    const cmp = a.date.localeCompare(b.date);
+    return filters.sort === "desc" ? -cmp : cmp;
+  });
+  return filtered;
+}
+function uniqueTags(entries) {
+  const set = new Set();
+  for (const e of entries) for (const t of (e.tags || [])) set.add(t);
+  return Array.from(set).sort();
+}
+
+/* FLATPACK:IMPORT_EXPORT */
+function triggerDownload(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+function exportJSON() {
+  const payload = { meta: APP_META, exportedAt: new Date().toISOString(), entries: state.entries };
+  triggerDownload(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }), "chronology.json");
+}
+function exportCSV() {
+  const header = ["date", "event", "source", "tags", "notes"];
+  const rows = [header, ...state.entries.map(e => [e.date, e.event, e.source || "", (e.tags || []).join(", "), e.notes || ""])];
+  const csv = rows.map(r => r.map(toCSVCell).join(",")).join("\r\n");
+  triggerDownload(new Blob([csv], { type: "text/csv;charset=utf-8" }), "chronology.csv");
+}
+function toCSVCell(v) {
+  const s = v == null ? "" : String(v);
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+async function importJSONFile(file) {
+  const text = await file.text();
+  let parsed;
+  try { parsed = JSON.parse(text); }
+  catch { alert("Could not parse the file as JSON."); return; }
+  const incoming = Array.isArray(parsed) ? parsed : parsed.entries;
+  if (!Array.isArray(incoming)) { alert("File does not contain an entries array."); return; }
+  const cleaned = incoming
+    .filter(e => e && e.date && e.event)
+    .map(e => ({
+      id: e.id || makeId(),
+      date: String(e.date).slice(0, 10),
+      event: String(e.event),
+      source: e.source ? String(e.source) : "",
+      tags: Array.isArray(e.tags) ? e.tags.map(t => String(t).trim().toLowerCase()).filter(Boolean) : parseTags(e.tags),
+      notes: e.notes ? String(e.notes) : ""
+    }));
+  if (!cleaned.length) { alert("No usable entries found in the file."); return; }
+  if (!confirm(`Import ${cleaned.length} entries? They will be merged into the current chronology.`)) return;
+  state.entries = state.entries.concat(cleaned);
+  render();
+}
+
+/* FLATPACK:RENDERING */
+const $ = (s) => document.querySelector(s);
+
+function renderHeader() {
+  $("#app-title").textContent = APP_META.name;
+  $("#app-purpose").textContent = APP_META.description;
+  $("#footer-version").textContent = `${APP_META.name} v${APP_META.version}`;
+}
+function renderFilters() {
+  $("#q").value = state.filters.q;
+  $("#sort").value = state.filters.sort;
+  const all = uniqueTags(state.entries);
+  const container = $("#tag-filters");
+  if (!all.length) { container.innerHTML = `<span class="muted">No tags yet. Add a tag to an entry to filter by it.</span>`; return; }
+  container.innerHTML = all.map(t => {
+    const active = state.filters.tags.includes(t);
+    return `<button type="button" class="tag tag-toggle ${active ? "active" : ""}" data-tag="${escapeAttr(t)}" aria-pressed="${active}">#${escapeHtml(t)}</button>`;
+  }).join(" ");
+}
+function renderEntries() {
+  const filtered = applyFilters(state.entries, state.filters);
+  $("#entry-count").textContent = state.entries.length === filtered.length
+    ? `(${state.entries.length})`
+    : `(${filtered.length} of ${state.entries.length})`;
+  const list = $("#entries");
+  if (!filtered.length) {
+    list.innerHTML = `<li class="muted" style="padding: 16px 0;">${state.entries.length ? "No entries match the current filter." : "No entries yet. Add one above, or click \"Load sample\"."}</li>`;
+    return;
+  }
+  list.innerHTML = filtered.map(e => `
+    <li class="entry" data-id="${escapeAttr(e.id)}">
+      <div class="date">${escapeHtml(e.date)}</div>
+      <div class="body">
+        <div class="event">${escapeHtml(e.event)}</div>
+        ${e.source ? `<div class="source">${escapeHtml(e.source)}</div>` : ""}
+        ${e.tags && e.tags.length ? `<div class="tags">${e.tags.map(t => `<span class="tag">#${escapeHtml(t)}</span>`).join("")}</div>` : ""}
+        ${e.notes ? `<div class="notes">${escapeHtml(e.notes)}</div>` : ""}
+      </div>
+      <div class="actions no-print">
+        <button class="btn" type="button" data-action="edit" data-id="${escapeAttr(e.id)}">Edit</button>
+        <button class="btn danger" type="button" data-action="delete" data-id="${escapeAttr(e.id)}">Delete</button>
+      </div>
+    </li>
+  `).join("");
+}
+function render() { renderHeader(); renderFilters(); renderEntries(); saveState(); }
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function escapeAttr(s) { return escapeHtml(s); }
+
+/* FLATPACK:EVENTS */
+function readAddForm() {
+  const data = new FormData($("#add-form"));
+  return {
+    date: data.get("date") || "",
+    event: (data.get("event") || "").trim(),
+    source: (data.get("source") || "").trim(),
+    tags: parseTags(data.get("tags") || ""),
+    notes: (data.get("notes") || "").trim()
+  };
+}
+function openEdit(id) {
+  const e = state.entries.find(x => x.id === id);
+  if (!e) return;
+  $("#edit-id").value = e.id;
+  $("#edit-date").value = e.date;
+  $("#edit-event").value = e.event;
+  $("#edit-source").value = e.source || "";
+  $("#edit-tags").value = (e.tags || []).join(", ");
+  $("#edit-notes").value = e.notes || "";
+  $("#edit-dialog").showModal();
+}
+function bindEvents() {
+  $("#add-form").addEventListener("submit", ev => {
+    ev.preventDefault();
+    const candidate = readAddForm();
+    const errs = validateEntry(candidate);
+    if (errs.length) { alert(errs.join("\n")); return; }
+    state.entries.push({ id: makeId(), ...candidate });
+    $("#add-form").reset();
+    render();
+  });
+
+  $("#sample-btn").addEventListener("click", () => {
+    if (state.entries.length && !confirm("Add sample entries to the current chronology?")) return;
+    state.entries = state.entries.concat(SAMPLE_ENTRIES.map(e => ({ ...e, id: makeId() })));
+    render();
+  });
+
+  $("#reset-btn").addEventListener("click", () => {
+    if (!confirm("Delete all entries and clear filters?")) return;
+    state = structuredClone(initialState); saveState(); render();
+  });
+
+  $("#q").addEventListener("input", e => { state.filters.q = e.target.value; render(); });
+  $("#sort").addEventListener("change", e => { state.filters.sort = e.target.value; render(); });
+  $("#clear-filters").addEventListener("click", () => {
+    state.filters = { q: "", tags: [], sort: state.filters.sort };
+    render();
+  });
+
+  $("#tag-filters").addEventListener("click", e => {
+    const t = e.target.closest("[data-tag]");
+    if (!t) return;
+    const tag = t.dataset.tag;
+    const set = new Set(state.filters.tags);
+    if (set.has(tag)) set.delete(tag); else set.add(tag);
+    state.filters.tags = Array.from(set);
+    render();
+  });
+
+  $("#entries").addEventListener("click", e => {
+    const btn = e.target.closest("[data-action]");
+    if (!btn) return;
+    const id = btn.dataset.id;
+    if (btn.dataset.action === "delete") {
+      if (!confirm("Delete this entry?")) return;
+      state.entries = state.entries.filter(x => x.id !== id);
+      render();
+    } else if (btn.dataset.action === "edit") {
+      openEdit(id);
+    }
+  });
+
+  $("#edit-form").addEventListener("submit", e => {
+    e.preventDefault();
+    const id = $("#edit-id").value;
+    const idx = state.entries.findIndex(x => x.id === id);
+    if (idx < 0) return;
+    const updated = {
+      id,
+      date: $("#edit-date").value,
+      event: $("#edit-event").value.trim(),
+      source: $("#edit-source").value.trim(),
+      tags: parseTags($("#edit-tags").value),
+      notes: $("#edit-notes").value.trim()
+    };
+    const errs = validateEntry(updated);
+    if (errs.length) { alert(errs.join("\n")); return; }
+    state.entries[idx] = updated;
+    $("#edit-dialog").close();
+    render();
+  });
+  $("#edit-cancel").addEventListener("click", () => $("#edit-dialog").close());
+
+  $("#export-json-btn").addEventListener("click", exportJSON);
+  $("#export-csv-btn").addEventListener("click", exportCSV);
+  $("#import-json-btn").addEventListener("click", () => $("#import-file").click());
+  $("#import-file").addEventListener("change", e => {
+    const f = e.target.files?.[0];
+    if (f) importJSONFile(f);
+    e.target.value = "";
+  });
+  $("#print-btn").addEventListener("click", () => window.print());
+}
+
+/* Sample data — illustrative, not advice. */
+const SAMPLE_ENTRIES = [
+  { date: "2025-09-12", event: "Initial contract signed", source: "Exhibit A — signed PDF", tags: ["contract"], notes: "Two-year term, monthly invoices in arrears." },
+  { date: "2025-11-04", event: "First service complaint emailed", source: "Email thread, 2025-11-04", tags: ["complaint", "service"], notes: "Response time SLA breached on three tickets." },
+  { date: "2025-11-19", event: "Supplier acknowledges issues, promises remediation plan", source: "Email reply, 2025-11-19", tags: ["complaint", "remediation"], notes: "No plan attached at this stage." },
+  { date: "2026-01-08", event: "Second complaint — same root cause", source: "Email thread, 2026-01-08", tags: ["complaint", "service"], notes: "Customer cites prior November exchange." },
+  { date: "2026-02-02", event: "Notice of intent to terminate sent", source: "Letter, 2026-02-02", tags: ["termination", "contract"], notes: "30-day cure period requested." },
+  { date: "2026-03-03", event: "Cure period expires without remediation plan", source: "Calendar reminder", tags: ["termination", "contract"], notes: "Position taken: contract terminated for cause." }
+];
+
+/* FLATPACK:TEST_CASES */
+const TEST_CASES = [
+  {
+    name: "parseTags lowercases and trims",
+    run: () => {
+      const r = parseTags("Contract, complaint ,  ,Termination");
+      return r.length === 3 && r[0] === "contract" && r[2] === "termination";
+    }
+  },
+  {
+    name: "validateEntry requires date and event",
+    run: () => {
+      const errs = validateEntry({ date: "", event: "" });
+      return errs.length === 2;
+    }
+  },
+  {
+    name: "applyFilters sorts ascending by default",
+    run: () => {
+      const xs = [{ date: "2026-02-01", event: "B" }, { date: "2025-12-01", event: "A" }];
+      const r = applyFilters(xs, { q: "", tags: [], sort: "asc" });
+      return r[0].event === "A" && r[1].event === "B";
+    }
+  },
+  {
+    name: "applyFilters search hits notes",
+    run: () => {
+      const xs = [{ date: "2026-01-01", event: "x", source: "", tags: [], notes: "spans liability discussion" }];
+      const r = applyFilters(xs, { q: "liability", tags: [], sort: "asc" });
+      return r.length === 1;
+    }
+  },
+  {
+    name: "applyFilters tag filter requires all tags",
+    run: () => {
+      const xs = [
+        { date: "2026-01-01", event: "x", tags: ["a", "b"] },
+        { date: "2026-01-02", event: "y", tags: ["a"] }
+      ];
+      const r = applyFilters(xs, { q: "", tags: ["a", "b"], sort: "asc" });
+      return r.length === 1 && r[0].event === "x";
+    }
+  },
+  {
+    name: "uniqueTags collects and sorts",
+    run: () => {
+      const xs = [{ tags: ["b", "a"] }, { tags: ["a", "c"] }];
+      const r = uniqueTags(xs);
+      return r.join(",") === "a,b,c";
+    }
+  },
+  {
+    name: "bindEvents attaches listeners without throwing",
+    run: () => {
+      const realQS = document.querySelector;
+      const realAEL = document.addEventListener;
+      let attached = 0;
+      const mockEl = {
+        addEventListener: () => { attached++; },
+        classList: { add(){}, remove(){}, toggle(){} },
+        style: {}, dataset: {}, hidden: false, value: "", checked: false, textContent: ""
+      };
+      document.querySelector = () => mockEl;
+      document.addEventListener = () => { attached++; };
+      try { bindEvents(); return attached > 0; }
+      finally {
+        document.querySelector = realQS;
+        document.addEventListener = realAEL;
+      }
+    }
+  },
+  {
+    name: "loadState tolerates malformed stored data",
+    run: () => {
+      const realGet = localStorage.getItem;
+      localStorage.getItem = () => "not json {{{";
+      try { return loadState() === null; }
+      finally { localStorage.getItem = realGet; }
+    }
+  }
+];
+function runTests() {
+  const results = TEST_CASES.map(t => {
+    try { return { name: t.name, passed: !!t.run() }; }
+    catch (e) { return { name: t.name, passed: false, error: String(e) }; }
+  });
+  // eslint-disable-next-line no-console
+  console.table(results);
+  return results;
+}
+
+/* FLATPACK:BOOT */
+document.addEventListener("DOMContentLoaded", () => {
+  bindEvents();
+  render();
+  if (new URLSearchParams(location.search).get("test") === "1") runTests();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flatpack.dev/manifest.schema.json",
+  "title": "Flatpack manifest",
+  "description": "Schema for the inline FLATPACK:MANIFEST JSON block carried by every Flatpack. Documentation only — Flatpacks do not load or validate against this schema at runtime. See SPEC.md §6.1.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["name", "artifactType", "version", "scope", "persistence", "network"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Human-readable tool name. Matches APP_META.name."
+    },
+    "artifactType": {
+      "type": "string",
+      "description": "Canonical shape — one of the templates the tool was based on, or a new shape name.",
+      "examples": ["calculator", "csv-cleaner", "checklist", "report-builder", "decision-tree", "chronology"]
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[A-Za-z0-9.-]+)?$",
+      "description": "Semver. Matches APP_META.version. Bumped together with the storage key when state shape changes."
+    },
+    "scope": {
+      "type": "string",
+      "enum": ["personal", "shared-read-only"],
+      "description": "personal = one user / one device (default). shared-read-only = the file may be sent to a small known group; no shared state, no collaboration. Anything more is a promotion event."
+    },
+    "persistence": {
+      "type": "string",
+      "enum": ["none", "localStorage", "indexedDB"],
+      "description": "Disclosed verbatim in the privacy banner."
+    },
+    "network": {
+      "type": "string",
+      "enum": ["none", "user-supplied-endpoint"],
+      "description": "none = no calls. user-supplied-endpoint = the tool's purpose is to call an endpoint the user pastes in at runtime. No embedded URLs."
+    },
+    "runtime": {
+      "type": "object",
+      "description": "Optional environment declarations.",
+      "additionalProperties": true,
+      "properties": {
+        "minimumBrowser": {
+          "type": "object",
+          "description": "Floor for each major engine the file is known to require. Defaults if omitted: Chrome 100, Safari 15.4, Firefox 98, Edge 100.",
+          "additionalProperties": { "type": "number" },
+          "properties": {
+            "chrome":  { "type": "number" },
+            "safari":  { "type": "number" },
+            "firefox": { "type": "number" },
+            "edge":    { "type": "number" }
+          }
+        }
+      }
+    },
+    "entities": {
+      "type": "array",
+      "description": "The user-meaningful records the tool manipulates. The promotion plan uses these to propose database models.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["name", "fields"],
+        "properties": {
+          "name": { "type": "string" },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": ["name", "type"],
+              "properties": {
+                "name":     { "type": "string" },
+                "type":     {
+                  "type": "string",
+                  "description": "Free-form type label. Conventional: string, number, date, boolean, enum, text, list, list[string], ref."
+                },
+                "required": { "type": "boolean" },
+                "unique":   { "type": "boolean" },
+                "default":  {},
+                "min":      { "type": "number" },
+                "max":      { "type": "number" },
+                "gt":       { "type": "number" },
+                "values":   { "type": "array" },
+                "ref":      { "type": "string", "description": "Other entity name + field, e.g. \"ChecklistSection.id\"" },
+                "note":     { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "validations": {
+      "type": "array",
+      "description": "Plain-English rules. Each item is a single rule. The promotion agent converts these to backend + frontend validation.",
+      "items": { "type": "string" }
+    },
+    "exports": {
+      "type": "array",
+      "description": "Output formats the tool produces. Conventional values: clean_csv, errors_csv, json, csv, markdown, markdown_clipboard, summary_clipboard, summary_print, print_pdf.",
+      "items": { "type": "string" }
+    },
+    "imports": {
+      "type": "array",
+      "description": "Input formats the tool accepts (if any beyond direct input).",
+      "items": { "type": "string" }
+    },
+    "promotionSignals": {
+      "type": "array",
+      "description": "Concrete events that, if any of them happens, mean the tool has stopped being personal and should be promoted into Baseplate.",
+      "items": { "type": "string" }
+    },
+    "archetype": {
+      "type": "string",
+      "description": "Free-text label for the whole-app archetype this tool represents. NOT a Baseplate recipe — Baseplate recipes are modifications layered on a base app. The promotion agent translates archetype → recipe set. Conventional values used in this repo: internal-tool, import-validate-store, decision-log, case-workspace, workflow-with-checklist, branching-questionnaire."
+    }
+  }
+}

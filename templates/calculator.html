@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Flatpack: Calculator template</title>
+<!-- FLATPACK:HELP
+
+  Flatpack:     Calculator template
+  Version:      0.1.0
+  Purpose:      Starting point for a single-file local calculator.
+  Data:         local-only
+  Network:      none
+  Persistence:  localStorage
+
+  HUMAN HELP
+    Inputs:   client name, hourly rate, estimated hours, contingency %,
+              currency (GBP/EUR/USD)
+    Outputs:  calculated total, copyable summary, JSON export,
+              printable proposal page
+    Limits:   single-currency calculation; no per-line-item tax;
+              uses Intl.NumberFormat for display (fallback if unavailable)
+
+  AI EDITING NOTES
+    - Safe to modify:  CORE_LOGIC, SCHEMA, VALIDATION, RENDERING, STYLES, HTML.
+    - Edit with care:  STATE — migrate localStorage if the shape changes
+                       (bump STORAGE_KEY to v2 and write a migration in loadState).
+    - Avoid modifying: IMPORT_EXPORT unless changing file formats.
+    - Rules: no network, no external dependencies, no embedded secrets.
+    - Run TEST_CASES (?test=1) after changes to CORE_LOGIC or VALIDATION.
+-->
+
+<!-- FLATPACK:STYLES -->
+<style>
+  :root {
+    --bg: #f7f7f5;
+    --panel: #ffffff;
+    --ink: #1b1b1a;
+    --muted: #6a6a66;
+    --line: #e5e5e0;
+    --accent: #2b6cb0;
+    --accent-ink: #ffffff;
+    --warn: #b45309;
+    --error: #b91c1c;
+    --ok: #166534;
+    --radius: 8px;
+    --gap: 16px;
+    --maxw: 880px;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); }
+  body { line-height: 1.45; }
+  main, header, footer { max-width: var(--maxw); margin: 0 auto; padding: 24px; }
+  header { padding-bottom: 0; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  h2 { font-size: 1.1rem; margin: 0 0 12px; }
+  p { margin: 0 0 12px; }
+  .muted { color: var(--muted); }
+  .privacy {
+    background: #eef4fb;
+    border: 1px solid #cfe0f3;
+    color: #1e3a5f;
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    font-size: 0.9rem;
+    margin: 16px 0 0;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: var(--gap);
+  }
+  .grid { display: grid; gap: var(--gap); grid-template-columns: 1fr 1fr; }
+  @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+  label { display: block; font-weight: 600; margin-bottom: 4px; font-size: 0.95rem; }
+  .field { margin-bottom: 14px; }
+  .field .help { color: var(--muted); font-size: 0.85rem; margin-top: 4px; }
+  .field .error { color: var(--error); font-size: 0.85rem; margin-top: 4px; }
+  input[type="text"], input[type="number"], select, textarea {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    font: inherit;
+    background: #fff;
+    color: var(--ink);
+  }
+  input:focus, select:focus, textarea:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  .btn {
+    appearance: none;
+    border: 1px solid var(--line);
+    background: #fff;
+    color: var(--ink);
+    padding: 8px 14px;
+    border-radius: var(--radius);
+    font: inherit;
+    cursor: pointer;
+  }
+  .btn:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .btn.ghost { background: transparent; }
+  .btn + .btn { margin-left: 8px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .result {
+    font-size: 2rem;
+    font-weight: 700;
+    margin: 0 0 4px;
+  }
+  .result.muted { color: var(--muted); font-weight: 500; }
+  .alert {
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    font-size: 0.95rem;
+  }
+  .alert.warn { background: #fdf6e7; border: 1px solid #f3d99a; color: var(--warn); }
+  .alert.error { background: #fdecec; border: 1px solid #f3b8b8; color: var(--error); }
+  .alert.ok { background: #e9f5ec; border: 1px solid #bbe0c4; color: var(--ok); }
+  footer {
+    color: var(--muted);
+    font-size: 0.85rem;
+    border-top: 1px solid var(--line);
+    margin-top: 24px;
+  }
+  details { margin-top: 12px; }
+  summary { cursor: pointer; }
+
+  /* Print */
+  @media print {
+    :root { --bg: #fff; }
+    body { background: #fff; color: #000; }
+    .no-print, header .privacy, footer { display: none !important; }
+    main { max-width: none; padding: 0; }
+    .card { box-shadow: none; border: 1px solid #ccc; page-break-inside: avoid; }
+    #print-report { display: block !important; }
+    .result { color: #000; }
+  }
+  #print-report { margin-top: 16px; }
+  #print-report table { width: 100%; border-collapse: collapse; }
+  #print-report th, #print-report td { border-bottom: 1px solid var(--line); text-align: left; padding: 6px 4px; }
+</style>
+
+<!-- FLATPACK:HTML -->
+</head>
+<body>
+<header>
+  <h1 id="app-title">Calculator</h1>
+  <p class="muted" id="app-purpose">A starting point for a single-file local calculator.</p>
+  <div class="privacy" role="note" id="privacy-banner">
+    Local-first: this tool runs in your browser and does not upload your data. Your inputs are saved locally on this device.
+  </div>
+</header>
+
+<main>
+  <section class="grid">
+    <div class="card no-print">
+      <h2>Inputs</h2>
+      <form id="inputs-form" novalidate>
+        <div class="field">
+          <label for="clientName">Client name</label>
+          <input id="clientName" name="clientName" type="text" autocomplete="off">
+          <div class="help">Shown on the printable summary.</div>
+          <div class="error" data-error-for="clientName" aria-live="polite"></div>
+        </div>
+        <div class="field">
+          <label for="hourlyRate">Hourly rate</label>
+          <input id="hourlyRate" name="hourlyRate" type="number" min="0" step="0.01" inputmode="decimal">
+          <div class="error" data-error-for="hourlyRate" aria-live="polite"></div>
+        </div>
+        <div class="field">
+          <label for="estimatedHours">Estimated hours</label>
+          <input id="estimatedHours" name="estimatedHours" type="number" min="0" step="0.25" inputmode="decimal">
+          <div class="error" data-error-for="estimatedHours" aria-live="polite"></div>
+        </div>
+        <div class="field">
+          <label for="contingencyPct">Contingency (%)</label>
+          <input id="contingencyPct" name="contingencyPct" type="number" min="0" max="100" step="1" inputmode="numeric" value="10">
+          <div class="error" data-error-for="contingencyPct" aria-live="polite"></div>
+        </div>
+        <div class="field">
+          <label for="currency">Currency</label>
+          <select id="currency" name="currency">
+            <option>GBP</option>
+            <option>EUR</option>
+            <option>USD</option>
+          </select>
+        </div>
+        <div class="row">
+          <button class="btn primary" type="submit">Calculate</button>
+          <button class="btn" type="button" id="sample-btn">Load sample</button>
+          <button class="btn ghost" type="button" id="reset-btn">Reset</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Result</h2>
+      <div id="errors-summary" aria-live="polite"></div>
+      <p class="muted">Estimated total</p>
+      <p class="result muted" id="result-total">—</p>
+      <p class="muted" id="result-breakdown"></p>
+      <div class="row no-print" style="margin-top:12px;">
+        <button class="btn" type="button" id="copy-btn">Copy summary</button>
+        <button class="btn" type="button" id="export-json-btn">Export JSON</button>
+        <button class="btn" type="button" id="print-btn">Print</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="print-report" class="card" aria-label="Printable summary">
+    <h2 id="report-title">Estimate</h2>
+    <p class="muted" id="report-subtitle"></p>
+    <table>
+      <tbody id="report-rows"></tbody>
+    </table>
+    <p class="muted" id="report-footer" style="margin-top:12px;"></p>
+  </section>
+
+  <details class="no-print">
+    <summary>About this Flatpack</summary>
+    <p class="muted">
+      This is the Flatpack calculator template. Copy this file, change the
+      schema, the core logic, and the rendering to suit your tool. See the
+      Flatpack repo for the anatomy and quality checklist.
+    </p>
+  </details>
+</main>
+
+<footer>
+  <span id="footer-version"></span> · Local-only · No network · Single file
+</footer>
+
+<!-- FLATPACK:MANIFEST -->
+<script type="application/json" id="flatpack-manifest">
+{
+  "name": "Calculator template",
+  "artifactType": "calculator",
+  "version": "0.1.0",
+  "scope": "personal",
+  "persistence": "localStorage",
+  "network": "none",
+  "entities": [
+    {
+      "name": "Quote",
+      "fields": [
+        { "name": "clientName",     "type": "string", "required": true },
+        { "name": "hourlyRate",     "type": "number", "required": true, "min": 0 },
+        { "name": "estimatedHours", "type": "number", "required": true, "min": 0 },
+        { "name": "contingencyPct", "type": "number", "required": true, "min": 0, "max": 100 },
+        { "name": "currency",       "type": "enum",   "values": ["GBP","EUR","USD"], "required": true }
+      ]
+    }
+  ],
+  "validations": [
+    "clientName is required",
+    "hourlyRate must be >= 0",
+    "estimatedHours must be >= 0",
+    "contingencyPct must be between 0 and 100",
+    "currency must be one of GBP, EUR, USD"
+  ],
+  "exports": ["json", "summary_clipboard", "print_pdf"],
+  "promotionSignals": [
+    "Multiple people maintain or review the same set of quotes",
+    "Quotes need to be stored centrally and versioned",
+    "An approval workflow is needed before a quote goes out",
+    "Customer-facing portal is required"
+  ],
+  "archetype": "internal-tool"
+}
+</script>
+
+<script>
+"use strict";
+
+/* FLATPACK:METADATA */
+const APP_META = {
+  name: "Calculator template",
+  version: "0.1.0",
+  description: "A starting point for a single-file local calculator.",
+  dataPolicy: "local-only",
+  persistence: "localStorage",
+  network: "none"
+};
+const STORAGE_KEY = "flatpack:calculator:v1";
+
+/* FLATPACK:SCHEMA */
+const schema = {
+  clientName:      { type: "string", required: true, label: "Client name" },
+  hourlyRate:      { type: "number", required: true, min: 0,   label: "Hourly rate" },
+  estimatedHours:  { type: "number", required: true, min: 0,   label: "Estimated hours" },
+  contingencyPct:  { type: "number", required: true, min: 0, max: 100, label: "Contingency (%)" },
+  currency:        { type: "string", required: true, oneOf: ["GBP","EUR","USD"], label: "Currency" }
+};
+
+/* FLATPACK:STATE */
+const initialState = {
+  inputs: {
+    clientName: "",
+    hourlyRate: "",
+    estimatedHours: "",
+    contingencyPct: 10,
+    currency: "GBP"
+  },
+  result: null,
+  errors: []
+};
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || !parsed.inputs) return null;
+    return parsed;
+  } catch { return null; }
+}
+function saveState(s) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch { /* private mode */ }
+}
+let state = loadState() ?? structuredClone(initialState);
+
+/* FLATPACK:VALIDATION */
+function validate(data, rules) {
+  const errors = [];
+  for (const [key, r] of Object.entries(rules)) {
+    const raw = data[key];
+    const isEmpty = raw === undefined || raw === null || raw === "";
+    if (r.required && isEmpty) {
+      errors.push({ field: key, message: `${r.label} is required.` });
+      continue;
+    }
+    if (isEmpty) continue;
+    if (r.type === "number") {
+      const n = Number(raw);
+      if (!Number.isFinite(n)) {
+        errors.push({ field: key, message: `${r.label} must be a number.` });
+        continue;
+      }
+      if (r.min !== undefined && n < r.min) {
+        errors.push({ field: key, message: `${r.label} must be at least ${r.min}.` });
+      }
+      if (r.max !== undefined && n > r.max) {
+        errors.push({ field: key, message: `${r.label} must be at most ${r.max}.` });
+      }
+    }
+    if (r.oneOf && !r.oneOf.includes(String(raw))) {
+      errors.push({ field: key, message: `${r.label} must be one of: ${r.oneOf.join(", ")}.` });
+    }
+  }
+  return errors;
+}
+
+/* FLATPACK:CORE_LOGIC — pure functions, no DOM, no state */
+function calculateQuote(inputs) {
+  const rate = Number(inputs.hourlyRate);
+  const hours = Number(inputs.estimatedHours);
+  const contingencyPct = Number(inputs.contingencyPct);
+  const subtotal = round2(rate * hours);
+  const contingency = round2(subtotal * (contingencyPct / 100));
+  const total = round2(subtotal + contingency);
+  return {
+    subtotal,
+    contingency,
+    total,
+    currency: inputs.currency,
+    breakdown: `${hours} hr × ${formatMoney(rate, inputs.currency)} + ${contingencyPct}% contingency`
+  };
+}
+function round2(n) { return Math.round(n * 100) / 100; }
+function formatMoney(amount, currency) {
+  try {
+    return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(amount);
+  } catch {
+    return `${currency} ${Number(amount).toFixed(2)}`;
+  }
+}
+
+/* FLATPACK:IMPORT_EXPORT */
+function exportJSON(payload, filename) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  triggerDownload(blob, filename);
+}
+function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+async function copyToClipboard(text) {
+  try { await navigator.clipboard.writeText(text); return true; }
+  catch { return false; }
+}
+function summaryText(s) {
+  if (!s.result) return "No result yet.";
+  const lines = [
+    `${APP_META.name} — ${APP_META.version}`,
+    `Client: ${s.inputs.clientName || "—"}`,
+    `Rate: ${formatMoney(Number(s.inputs.hourlyRate || 0), s.inputs.currency)}`,
+    `Hours: ${s.inputs.estimatedHours || 0}`,
+    `Contingency: ${s.inputs.contingencyPct || 0}%`,
+    `Subtotal: ${formatMoney(s.result.subtotal, s.inputs.currency)}`,
+    `Contingency amount: ${formatMoney(s.result.contingency, s.inputs.currency)}`,
+    `Total: ${formatMoney(s.result.total, s.inputs.currency)}`
+  ];
+  return lines.join("\n");
+}
+function resetState() {
+  state = structuredClone(initialState);
+  saveState(state);
+}
+
+/* FLATPACK:RENDERING */
+function $(sel, root = document) { return root.querySelector(sel); }
+function $$(sel, root = document) { return Array.from(root.querySelectorAll(sel)); }
+
+function renderInputs() {
+  for (const key of Object.keys(schema)) {
+    const el = document.getElementById(key);
+    if (!el) continue;
+    const v = state.inputs[key];
+    if (el.value !== String(v ?? "")) el.value = v ?? "";
+  }
+}
+function renderErrors() {
+  $$("[data-error-for]").forEach(el => { el.textContent = ""; });
+  const summary = $("#errors-summary");
+  if (!state.errors.length) {
+    summary.innerHTML = "";
+    return;
+  }
+  for (const e of state.errors) {
+    const slot = document.querySelector(`[data-error-for="${e.field}"]`);
+    if (slot) slot.textContent = e.message;
+  }
+  summary.innerHTML = `<div class="alert error">Fix the highlighted fields and calculate again.</div>`;
+}
+function renderResult() {
+  const r = state.result;
+  const totalEl = $("#result-total");
+  const breakdownEl = $("#result-breakdown");
+  if (!r) {
+    totalEl.textContent = "—";
+    totalEl.classList.add("muted");
+    breakdownEl.textContent = "Enter inputs and click Calculate.";
+    return;
+  }
+  totalEl.textContent = formatMoney(r.total, r.currency);
+  totalEl.classList.remove("muted");
+  breakdownEl.textContent = `${r.breakdown} = ${formatMoney(r.subtotal, r.currency)} + ${formatMoney(r.contingency, r.currency)}`;
+}
+function renderPrintReport() {
+  const r = state.result;
+  $("#report-title").textContent = `${APP_META.name}`;
+  $("#report-subtitle").textContent = `For ${state.inputs.clientName || "—"} · ${new Date().toLocaleDateString()}`;
+  const rows = $("#report-rows");
+  if (!r) {
+    rows.innerHTML = `<tr><td colspan="2" class="muted">No result yet.</td></tr>`;
+    $("#report-footer").textContent = "";
+    return;
+  }
+  const pairs = [
+    ["Hourly rate", formatMoney(Number(state.inputs.hourlyRate || 0), state.inputs.currency)],
+    ["Estimated hours", state.inputs.estimatedHours || 0],
+    ["Subtotal", formatMoney(r.subtotal, state.inputs.currency)],
+    ["Contingency", `${state.inputs.contingencyPct}% (${formatMoney(r.contingency, state.inputs.currency)})`],
+    ["Total", formatMoney(r.total, state.inputs.currency)]
+  ];
+  rows.innerHTML = pairs.map(([k,v]) => `<tr><th scope="row">${escapeHtml(k)}</th><td>${escapeHtml(String(v))}</td></tr>`).join("");
+  $("#report-footer").textContent = `Generated by ${APP_META.name} v${APP_META.version} · local-only.`;
+}
+function renderHeader() {
+  $("#app-title").textContent = APP_META.name;
+  $("#app-purpose").textContent = APP_META.description;
+  const persistMsg = {
+    "none": "This tool runs in your browser. Nothing is saved after you close the page.",
+    "localStorage": "This tool runs in your browser. Your inputs are saved locally on this device.",
+    "indexedDB": "This tool runs in your browser. Larger data is stored locally on this device."
+  }[APP_META.persistence] || "This tool runs in your browser.";
+  $("#privacy-banner").textContent = `Local-first: ${persistMsg} No data is uploaded.`;
+  $("#footer-version").textContent = `${APP_META.name} v${APP_META.version}`;
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+  }[c]));
+}
+
+function render() {
+  renderHeader();
+  renderInputs();
+  renderResult();
+  renderErrors();
+  renderPrintReport();
+  saveState(state);
+}
+
+/* FLATPACK:EVENTS */
+function readForm() {
+  const out = {};
+  for (const key of Object.keys(schema)) {
+    const el = document.getElementById(key);
+    out[key] = el ? el.value : "";
+  }
+  return out;
+}
+function bindEvents() {
+  $("#inputs-form").addEventListener("submit", e => {
+    e.preventDefault();
+    state.inputs = readForm();
+    state.errors = validate(state.inputs, schema);
+    state.result = state.errors.length ? null : calculateQuote(state.inputs);
+    render();
+  });
+  $("#inputs-form").addEventListener("input", e => {
+    const k = e.target && e.target.name;
+    if (!k || !(k in state.inputs)) return;
+    state.inputs[k] = e.target.value;
+    saveState(state);
+  });
+  $("#sample-btn").addEventListener("click", () => {
+    state.inputs = {
+      clientName: "Acme Ltd",
+      hourlyRate: 95,
+      estimatedHours: 24,
+      contingencyPct: 15,
+      currency: "GBP"
+    };
+    state.errors = [];
+    state.result = calculateQuote(state.inputs);
+    render();
+  });
+  $("#reset-btn").addEventListener("click", () => {
+    resetState();
+    render();
+  });
+  $("#copy-btn").addEventListener("click", async () => {
+    const ok = await copyToClipboard(summaryText(state));
+    if (!ok) alert("Could not copy to clipboard.");
+  });
+  $("#export-json-btn").addEventListener("click", () => {
+    exportJSON({ meta: APP_META, ...state }, `${slugify(APP_META.name)}.json`);
+  });
+  $("#print-btn").addEventListener("click", () => window.print());
+}
+function slugify(s) {
+  return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+/* FLATPACK:TEST_CASES */
+const TEST_CASES = [
+  {
+    name: "Basic quote",
+    run: () => {
+      const r = calculateQuote({ clientName: "X", hourlyRate: 100, estimatedHours: 10, contingencyPct: 10, currency: "GBP" });
+      return r.subtotal === 1000 && r.contingency === 100 && r.total === 1100;
+    }
+  },
+  {
+    name: "Zero hours is valid (zero total)",
+    run: () => calculateQuote({ clientName: "X", hourlyRate: 100, estimatedHours: 0, contingencyPct: 0, currency: "GBP" }).total === 0
+  },
+  {
+    name: "Negative hours rejected by validation",
+    run: () => validate({ clientName: "X", hourlyRate: 100, estimatedHours: -1, contingencyPct: 0, currency: "GBP" }, schema)
+      .some(e => e.field === "estimatedHours")
+  },
+  {
+    name: "Missing client name rejected",
+    run: () => validate({ clientName: "", hourlyRate: 100, estimatedHours: 10, contingencyPct: 0, currency: "GBP" }, schema)
+      .some(e => e.field === "clientName")
+  },
+  {
+    name: "bindEvents attaches listeners without throwing",
+    run: () => {
+      const realQS = document.querySelector;
+      const realAEL = document.addEventListener;
+      let attached = 0;
+      const mockEl = {
+        addEventListener: () => { attached++; },
+        classList: { add(){}, remove(){}, toggle(){} },
+        style: {}, dataset: {}, hidden: false, value: "", checked: false, textContent: ""
+      };
+      document.querySelector = () => mockEl;
+      document.addEventListener = () => { attached++; };
+      try { bindEvents(); return attached > 0; }
+      finally {
+        document.querySelector = realQS;
+        document.addEventListener = realAEL;
+      }
+    }
+  },
+  {
+    name: "loadState tolerates malformed stored data",
+    run: () => {
+      const realGet = localStorage.getItem;
+      localStorage.getItem = () => "not json {{{";
+      try { return loadState() === null; }
+      finally { localStorage.getItem = realGet; }
+    }
+  }
+];
+function runTests() {
+  const results = TEST_CASES.map(t => {
+    try { return { name: t.name, passed: !!t.run() }; }
+    catch (e) { return { name: t.name, passed: false, error: String(e) }; }
+  });
+  // eslint-disable-next-line no-console
+  console.table(results);
+  return results;
+}
+
+/* FLATPACK:BOOT */
+document.addEventListener("DOMContentLoaded", () => {
+  bindEvents();
+  render();
+  if (new URLSearchParams(location.search).get("test") === "1") runTests();
+});
+</script>
+</body>
+</html>

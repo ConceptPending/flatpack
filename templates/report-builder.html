@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Flatpack: Report builder template</title>
+<!-- FLATPACK:HELP
+
+  Flatpack:     Report builder template
+  Version:      0.1.0
+  Purpose:      Guided form → structured Markdown / printable report.
+  Data:         local-only
+  Network:      none
+  Persistence:  localStorage
+
+  HUMAN HELP
+    Inputs:   title, author, date, audience, context, options considered,
+              recommendation, risks, next steps
+    Outputs:  rendered preview, copyable Markdown, downloadable .md,
+              printable page
+    Limits:   intentionally a narrow Markdown subset (h1/h2, paragraphs,
+              bulleted lists); the renderer is purpose-built, not a full
+              CommonMark engine
+
+  AI EDITING NOTES
+    - Safe to modify:  SCHEMA (the form fields), CORE_LOGIC (the report
+                       format), STYLES.
+    - Edit with care:  STATE — bump STORAGE_KEY if the field set changes
+                       meaningfully.
+    - Avoid modifying: IMPORT_EXPORT unless changing file formats.
+    - Rules: no network, no external dependencies, no embedded secrets.
+    - Run TEST_CASES (?test=1) after changes to CORE_LOGIC or VALIDATION.
+-->
+
+<!-- FLATPACK:STYLES -->
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #fff; --ink: #1b1b1a; --muted: #6a6a66;
+    --line: #e5e5e0; --accent: #2b6cb0; --accent-ink: #fff;
+    --radius: 8px; --gap: 16px; --maxw: 1180px;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); line-height: 1.5; }
+  main, header, footer { max-width: var(--maxw); margin: 0 auto; padding: 24px; }
+  header { padding-bottom: 0; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  h2 { font-size: 1.05rem; margin: 0 0 12px; }
+  .muted { color: var(--muted); }
+  .privacy { background: #eef4fb; border: 1px solid #cfe0f3; color: #1e3a5f;
+    padding: 10px 12px; border-radius: var(--radius); font-size: 0.9rem; margin: 16px 0 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; margin-bottom: var(--gap); }
+  .grid { display: grid; gap: var(--gap); grid-template-columns: 1fr 1fr; }
+  @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
+  .btn { appearance: none; border: 1px solid var(--line); background: #fff; color: var(--ink); padding: 8px 14px; border-radius: var(--radius); font: inherit; cursor: pointer; }
+  .btn:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .btn + .btn { margin-left: 8px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  label { display: block; font-weight: 600; margin: 12px 0 4px; }
+  input[type="text"], input[type="date"], textarea, select {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius);
+    font: inherit; background: #fff; color: var(--ink);
+  }
+  textarea { min-height: 90px; resize: vertical; }
+  .help { color: var(--muted); font-size: 0.85rem; margin-top: 4px; }
+  .preview { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
+  .preview h1 { font-size: 1.4rem; margin-top: 0; }
+  .preview h2 { font-size: 1.05rem; margin: 16px 0 4px; }
+  .preview p { margin: 6px 0 12px; white-space: pre-wrap; }
+  .preview ul { margin: 0 0 12px 1.2em; padding: 0; }
+  .preview .meta { color: var(--muted); font-size: 0.9rem; margin-bottom: 12px; }
+  .source { white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; padding: 12px; background: #fafaf7; border-radius: var(--radius); border: 1px solid var(--line); max-height: 320px; overflow: auto; }
+  footer { color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--line); margin-top: 24px; }
+
+  @media print {
+    body { background: #fff; color: #000; }
+    .no-print { display: none !important; }
+    main { max-width: none; padding: 0; }
+    .card.preview-card { padding: 0; border: none; }
+    .preview { border: none; padding: 0; }
+    .grid { grid-template-columns: 1fr; }
+  }
+</style>
+
+<!-- FLATPACK:HTML -->
+</head>
+<body>
+<header>
+  <h1 id="app-title">Report builder</h1>
+  <p class="muted" id="app-purpose">Fill in the form. The report builds itself.</p>
+  <div class="privacy" id="privacy-banner" role="note">Local-first: drafts are saved on this device. Nothing is uploaded.</div>
+</header>
+
+<main>
+  <div class="grid">
+    <section class="card no-print" aria-labelledby="form-h">
+      <h2 id="form-h">Form</h2>
+      <form id="report-form"></form>
+      <div class="row" style="margin-top:12px;">
+        <button class="btn" type="button" id="sample-btn">Load sample</button>
+        <button class="btn" type="button" id="reset-btn">Reset</button>
+      </div>
+    </section>
+
+    <section class="card preview-card" aria-labelledby="preview-h">
+      <h2 id="preview-h" class="no-print">Preview</h2>
+      <div class="preview" id="preview"></div>
+      <div class="row no-print" style="margin-top:12px;">
+        <button class="btn primary" type="button" id="copy-btn">Copy Markdown</button>
+        <button class="btn" type="button" id="export-md-btn">Export Markdown</button>
+        <button class="btn" type="button" id="print-btn">Print</button>
+        <button class="btn" type="button" id="toggle-source-btn">View source</button>
+      </div>
+      <details id="source-wrap" class="no-print" style="margin-top:12px;" hidden>
+        <summary>Markdown source</summary>
+        <div class="source" id="source"></div>
+      </details>
+    </section>
+  </div>
+</main>
+
+<footer>
+  <span id="footer-version"></span> · Local-only · No network · Single file
+</footer>
+
+<!-- FLATPACK:MANIFEST -->
+<script type="application/json" id="flatpack-manifest">
+{
+  "name": "Decision briefing note",
+  "artifactType": "report-builder",
+  "version": "0.1.0",
+  "scope": "personal",
+  "persistence": "localStorage",
+  "network": "none",
+  "entities": [
+    {
+      "name": "BriefingNote",
+      "fields": [
+        { "name": "title",          "type": "string", "required": true },
+        { "name": "author",         "type": "string" },
+        { "name": "date",           "type": "date" },
+        { "name": "audience",       "type": "string" },
+        { "name": "context",        "type": "text" },
+        { "name": "options",        "type": "text", "note": "free text, one option per line" },
+        { "name": "recommendation", "type": "text" },
+        { "name": "risks",          "type": "text", "note": "one per line" },
+        { "name": "next_steps",     "type": "text", "note": "one per line" }
+      ]
+    }
+  ],
+  "validations": [
+    "title is required",
+    "options/risks/next_steps are bullet lists derived from line-separated input"
+  ],
+  "exports": ["markdown", "markdown_clipboard", "print_pdf"],
+  "promotionSignals": [
+    "Briefing notes need to be reviewed and signed off by named people",
+    "A searchable history of past decisions is needed",
+    "Versions or revisions of a note need to be tracked",
+    "Commenting or threaded review is required"
+  ],
+  "archetype": "decision-log"
+}
+</script>
+
+<script>
+"use strict";
+
+/* FLATPACK:METADATA */
+const APP_META = {
+  name: "Decision briefing note",
+  version: "0.1.0",
+  description: "Fill in a guided form. The tool produces a structured briefing note, copyable as Markdown or printable.",
+  dataPolicy: "local-only",
+  persistence: "localStorage",
+  network: "none"
+};
+const STORAGE_KEY = "flatpack:report-builder:v1";
+
+/* FLATPACK:SCHEMA — the form. Replace fields to suit any report shape. */
+const fields = [
+  { id: "title",       label: "Title",            type: "text",     required: true,  placeholder: "Decision: which auth provider?" },
+  { id: "author",      label: "Author",           type: "text",     placeholder: "Your name" },
+  { id: "date",        label: "Date",             type: "date" },
+  { id: "audience",    label: "Audience",         type: "text",     placeholder: "Who is this for?" },
+  { id: "context",     label: "Context",          type: "textarea", help: "Why are we deciding this now?" },
+  { id: "options",     label: "Options considered", type: "textarea", help: "One option per line. The first line is treated as a bullet header." },
+  { id: "recommendation", label: "Recommendation", type: "textarea", help: "Be specific. State the recommendation and why." },
+  { id: "risks",       label: "Risks",            type: "textarea", help: "One per line." },
+  { id: "next_steps",  label: "Next steps",       type: "textarea", help: "One per line." }
+];
+
+/* FLATPACK:STATE */
+function blank() {
+  return Object.fromEntries(fields.map(f => [f.id, f.id === "date" ? todayISO() : ""]));
+}
+const initialState = { values: blank() };
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || !parsed.values) return null;
+    // Merge with current schema so new fields appear blank rather than missing.
+    return { values: { ...blank(), ...parsed.values } };
+  } catch { return null; }
+}
+function saveState() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {} }
+let state = loadState() ?? structuredClone(initialState);
+
+function todayISO() {
+  const d = new Date();
+  const mm = String(d.getMonth()+1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+/* FLATPACK:CORE_LOGIC — pure functions only */
+function toMarkdown(meta, vals) {
+  const lines = [];
+  lines.push(`# ${vals.title || "(untitled)"}`);
+  const metaBits = [];
+  if (vals.author) metaBits.push(`Author: ${vals.author}`);
+  if (vals.date) metaBits.push(`Date: ${vals.date}`);
+  if (vals.audience) metaBits.push(`Audience: ${vals.audience}`);
+  if (metaBits.length) lines.push(`_${metaBits.join(" · ")}_`, "");
+
+  if (vals.context && vals.context.trim()) {
+    lines.push("## Context", vals.context.trim(), "");
+  }
+  if (vals.options && vals.options.trim()) {
+    lines.push("## Options considered");
+    for (const item of splitLines(vals.options)) lines.push(`- ${item}`);
+    lines.push("");
+  }
+  if (vals.recommendation && vals.recommendation.trim()) {
+    lines.push("## Recommendation", vals.recommendation.trim(), "");
+  }
+  if (vals.risks && vals.risks.trim()) {
+    lines.push("## Risks");
+    for (const item of splitLines(vals.risks)) lines.push(`- ${item}`);
+    lines.push("");
+  }
+  if (vals.next_steps && vals.next_steps.trim()) {
+    lines.push("## Next steps");
+    for (const item of splitLines(vals.next_steps)) lines.push(`- ${item}`);
+    lines.push("");
+  }
+  lines.push(`---`, `_Generated by ${meta.name} v${meta.version} · local-only._`);
+  return lines.join("\n");
+}
+function splitLines(s) {
+  return String(s).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+}
+function toHTMLFromMarkdown(md) {
+  // Minimal renderer: handles h1, h2, em-meta line, paragraphs, bulleted lists.
+  // Intentionally narrow — this tool authors the markdown so we know the shape.
+  const out = [];
+  const lines = md.split(/\r?\n/);
+  let inList = false;
+  for (const line of lines) {
+    if (/^# /.test(line)) {
+      flushList();
+      out.push(`<h1>${esc(line.slice(2))}</h1>`);
+    } else if (/^## /.test(line)) {
+      flushList();
+      out.push(`<h2>${esc(line.slice(3))}</h2>`);
+    } else if (/^---$/.test(line)) {
+      flushList();
+      out.push(`<hr>`);
+    } else if (/^_.*_$/.test(line)) {
+      flushList();
+      out.push(`<p class="meta">${esc(line.slice(1, -1))}</p>`);
+    } else if (/^- /.test(line)) {
+      if (!inList) { out.push("<ul>"); inList = true; }
+      out.push(`<li>${esc(line.slice(2))}</li>`);
+    } else if (line.trim() === "") {
+      flushList();
+    } else {
+      flushList();
+      out.push(`<p>${esc(line)}</p>`);
+    }
+  }
+  flushList();
+  return out.join("\n");
+
+  function flushList() { if (inList) { out.push("</ul>"); inList = false; } }
+  function esc(s) { return String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+}
+
+/* FLATPACK:IMPORT_EXPORT */
+function triggerDownload(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+function exportMarkdown() {
+  const md = toMarkdown(APP_META, state.values);
+  triggerDownload(new Blob([md], { type: "text/markdown;charset=utf-8" }), `${slug(state.values.title || "report")}.md`);
+}
+async function copyMarkdown() {
+  const md = toMarkdown(APP_META, state.values);
+  try { await navigator.clipboard.writeText(md); flash("Copied to clipboard."); }
+  catch { flash("Could not copy. Use Export Markdown instead.", true); }
+}
+function resetAll() { state = structuredClone(initialState); saveState(); }
+function slug(s) { return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "report"; }
+
+/* FLATPACK:RENDERING */
+const $ = s => document.querySelector(s);
+
+function renderHeader() {
+  $("#app-title").textContent = APP_META.name;
+  $("#app-purpose").textContent = APP_META.description;
+  $("#footer-version").textContent = `${APP_META.name} v${APP_META.version}`;
+}
+function renderForm() {
+  const form = $("#report-form");
+  form.innerHTML = fields.map(f => {
+    const v = state.values[f.id] ?? "";
+    const id = `f-${f.id}`;
+    const input = f.type === "textarea"
+      ? `<textarea id="${id}" name="${f.id}">${escapeHtml(v)}</textarea>`
+      : `<input type="${f.type}" id="${id}" name="${f.id}" value="${escapeAttr(v)}" placeholder="${escapeAttr(f.placeholder || "")}">`;
+    return `
+      <label for="${id}">${escapeHtml(f.label)}${f.required ? " *" : ""}</label>
+      ${input}
+      ${f.help ? `<div class="help">${escapeHtml(f.help)}</div>` : ""}
+    `;
+  }).join("");
+}
+function renderPreview() {
+  const md = toMarkdown(APP_META, state.values);
+  $("#preview").innerHTML = toHTMLFromMarkdown(md);
+  $("#source").textContent = md;
+}
+function render() { renderHeader(); renderForm(); renderPreview(); saveState(); }
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function escapeAttr(s) { return escapeHtml(s); }
+
+let flashTimer;
+function flash(msg, isError = false) {
+  // eslint-disable-next-line no-console
+  if (isError) console.warn(msg); else console.log(msg);
+  const id = "flash-msg";
+  let el = document.getElementById(id);
+  if (!el) {
+    el = document.createElement("div");
+    el.id = id;
+    el.setAttribute("role", "status");
+    el.style.cssText = "position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#1b1b1a;color:#fff;padding:8px 14px;border-radius:8px;font-size:0.9rem;z-index:50;";
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.style.background = isError ? "#b91c1c" : "#1b1b1a";
+  el.style.display = "block";
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => { el.style.display = "none"; }, 1500);
+}
+
+/* FLATPACK:EVENTS */
+function bindEvents() {
+  document.addEventListener("input", e => {
+    const t = e.target;
+    if (!t || !t.name || !(t.name in state.values)) return;
+    state.values[t.name] = t.value;
+    renderPreview();
+    saveState();
+  });
+  $("#sample-btn").addEventListener("click", () => {
+    state.values = {
+      title: "Decision: which auth provider for the dashboard?",
+      author: "Alex Rivera",
+      date: todayISO(),
+      audience: "Engineering leads, product owner",
+      context: "We need user accounts for the internal dashboard by end of quarter. Two providers are on the shortlist; legal has signed off on both.",
+      options: "Clerk — fastest to integrate, generous free tier\nAuth0 — incumbent across the org, more configuration\nRoll our own — full control, more maintenance",
+      recommendation: "Clerk. The dashboard's user base is small, the integration is half a day, and we keep the option to migrate later because we'll wrap session reads behind a single helper.",
+      risks: "Vendor lock-in if pricing changes\nNo SSO support on the free tier (acceptable for now)\nUnknown export story for user data",
+      next_steps: "Spike Clerk integration in a branch\nDecide session helper API\nDocument migration triggers in CLAUDE.md"
+    };
+    render();
+  });
+  $("#reset-btn").addEventListener("click", () => {
+    if (!confirm("Reset the form? Saved draft will be cleared.")) return;
+    resetAll(); render();
+  });
+  $("#copy-btn").addEventListener("click", copyMarkdown);
+  $("#export-md-btn").addEventListener("click", exportMarkdown);
+  $("#print-btn").addEventListener("click", () => window.print());
+  $("#toggle-source-btn").addEventListener("click", () => {
+    const wrap = $("#source-wrap");
+    wrap.hidden = !wrap.hidden;
+  });
+}
+
+/* FLATPACK:TEST_CASES */
+const TEST_CASES = [
+  {
+    name: "toMarkdown includes a title",
+    run: () => toMarkdown(APP_META, { ...blank(), title: "Hello" }).startsWith("# Hello")
+  },
+  {
+    name: "splitLines drops blanks and trims",
+    run: () => {
+      const r = splitLines("\n  a  \n\nb\n");
+      return r.length === 2 && r[0] === "a" && r[1] === "b";
+    }
+  },
+  {
+    name: "toMarkdown produces bullets for risks",
+    run: () => {
+      const md = toMarkdown(APP_META, { ...blank(), title: "T", risks: "one\ntwo" });
+      return md.includes("## Risks") && md.includes("- one") && md.includes("- two");
+    }
+  },
+  {
+    name: "toHTMLFromMarkdown closes lists",
+    run: () => {
+      const html = toHTMLFromMarkdown("# T\n\n## A\n- one\n- two\n\nfollowing text");
+      return /<ul>[\s\S]*<\/ul>[\s\S]*<p>following text<\/p>/.test(html);
+    }
+  },
+  {
+    name: "bindEvents attaches listeners without throwing",
+    run: () => {
+      const realQS = document.querySelector;
+      const realAEL = document.addEventListener;
+      let attached = 0;
+      const mockEl = {
+        addEventListener: () => { attached++; },
+        classList: { add(){}, remove(){}, toggle(){} },
+        style: {}, dataset: {}, hidden: false, value: "", checked: false, textContent: ""
+      };
+      document.querySelector = () => mockEl;
+      document.addEventListener = () => { attached++; };
+      try { bindEvents(); return attached > 0; }
+      finally {
+        document.querySelector = realQS;
+        document.addEventListener = realAEL;
+      }
+    }
+  },
+  {
+    name: "loadState tolerates malformed stored data",
+    run: () => {
+      const realGet = localStorage.getItem;
+      localStorage.getItem = () => "not json {{{";
+      try { return loadState() === null; }
+      finally { localStorage.getItem = realGet; }
+    }
+  }
+];
+function runTests() {
+  const results = TEST_CASES.map(t => {
+    try { return { name: t.name, passed: !!t.run() }; }
+    catch (e) { return { name: t.name, passed: false, error: String(e) }; }
+  });
+  // eslint-disable-next-line no-console
+  console.table(results);
+  return results;
+}
+
+/* FLATPACK:BOOT */
+document.addEventListener("DOMContentLoaded", () => {
+  bindEvents();
+  render();
+  if (new URLSearchParams(location.search).get("test") === "1") runTests();
+});
+</script>
+</body>
+</html>

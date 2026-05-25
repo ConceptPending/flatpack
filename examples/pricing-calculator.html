@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Client project quote</title>
+<!-- FLATPACK:HELP
+
+  Flatpack:     Client project quote (example)
+  Version:      0.2.0
+  Purpose:      A sendable pricing calculator for fixed-scope client work.
+  Data:         local-only
+  Network:      none
+  Persistence:  localStorage
+
+  Built from templates/calculator.html. Differences from the template:
+    - Day rate (not hourly) with explicit days line
+    - Discount, VAT/tax, and net/gross totals
+    - Optional second line item (workshops/expenses)
+    - Print layout shaped like a client proposal
+
+  HUMAN HELP
+    Inputs:   client name, project name, quote date, day rate, days,
+              optional extra line (label + amount), discount %, tax %,
+              currency, free-text notes
+    Outputs:  totals card, copyable summary, JSON export,
+              printable proposal page
+    Limits:   single-currency; discount is applied to subtotal before
+              tax; no signature flow, no PDF stamping
+
+  AI EDITING NOTES
+    - Safe to modify:  CORE_LOGIC, SCHEMA, VALIDATION, RENDERING, STYLES.
+    - Edit with care:  STATE — migrate localStorage if the shape changes
+                       (bump STORAGE_KEY and write a loadState migration).
+    - Avoid modifying: IMPORT_EXPORT without updating filename expectations.
+    - Rules: no network, no external dependencies, no embedded secrets.
+    - Run TEST_CASES (?test=1) after changes to CORE_LOGIC or VALIDATION.
+-->
+
+<!-- FLATPACK:STYLES -->
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #fff; --ink: #1b1b1a; --muted: #6a6a66;
+    --line: #e5e5e0; --accent: #2b6cb0; --accent-ink: #fff;
+    --warn: #b45309; --error: #b91c1c; --ok: #166534;
+    --radius: 8px; --gap: 16px; --maxw: 980px;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); line-height: 1.45; }
+  main, header, footer { max-width: var(--maxw); margin: 0 auto; padding: 24px; }
+  header { padding-bottom: 0; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  h2 { font-size: 1.05rem; margin: 0 0 12px; }
+  .muted { color: var(--muted); }
+  .privacy { background: #eef4fb; border: 1px solid #cfe0f3; color: #1e3a5f;
+    padding: 10px 12px; border-radius: var(--radius); font-size: 0.9rem; margin: 16px 0 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; margin-bottom: var(--gap); }
+  .grid { display: grid; gap: var(--gap); grid-template-columns: 1fr 1fr; }
+  @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+  label { display: block; font-weight: 600; margin-bottom: 4px; font-size: 0.95rem; }
+  .field { margin-bottom: 14px; }
+  .field .error { color: var(--error); font-size: 0.85rem; margin-top: 4px; }
+  input[type="text"], input[type="number"], select {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius);
+    font: inherit; background: #fff; color: var(--ink);
+  }
+  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .btn { appearance: none; border: 1px solid var(--line); background: #fff; color: var(--ink); padding: 8px 14px; border-radius: var(--radius); font: inherit; cursor: pointer; }
+  .btn:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .btn + .btn { margin-left: 8px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .totals table { width: 100%; border-collapse: collapse; }
+  .totals th, .totals td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line); }
+  .totals .grand th, .totals .grand td { border-bottom: none; font-size: 1.1rem; padding-top: 12px; font-weight: 700; }
+  .alert { border-radius: var(--radius); padding: 10px 12px; margin-bottom: 12px; font-size: 0.95rem; }
+  .alert.error { background: #fdecec; border: 1px solid #f3b8b8; color: var(--error); }
+  footer { color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--line); margin-top: 24px; }
+
+  /* Proposal print layout */
+  #proposal { display: none; padding: 0; }
+  #proposal .head { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 1px solid #000; padding-bottom: 8px; margin-bottom: 16px; }
+  #proposal .head h2 { margin: 0; font-size: 1.4rem; }
+  #proposal .head .meta { text-align: right; font-size: 0.9rem; color: #333; }
+  #proposal table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+  #proposal th, #proposal td { border-bottom: 1px solid #ccc; padding: 6px 4px; text-align: left; }
+  #proposal th { background: #f4f4f0; }
+  #proposal .terms { font-size: 0.85rem; color: #444; }
+
+  @media print {
+    body { background: #fff; color: #000; }
+    .no-print { display: none !important; }
+    main { max-width: none; padding: 0; }
+    .card.preview-card { padding: 0; border: none; }
+    #proposal { display: block !important; }
+  }
+</style>
+
+<!-- FLATPACK:HTML -->
+</head>
+<body>
+<header>
+  <h1 id="app-title">Client project quote</h1>
+  <p class="muted" id="app-purpose">Build a sendable pricing summary for a fixed-scope project.</p>
+  <div class="privacy" id="privacy-banner" role="note">
+    Local-first: this tool runs in your browser. Nothing is uploaded. Inputs are saved on this device.
+  </div>
+</header>
+
+<main>
+  <div class="grid">
+    <section class="card no-print" aria-labelledby="form-h">
+      <h2 id="form-h">Project</h2>
+      <form id="quote-form" novalidate>
+        <div class="field">
+          <label for="clientName">Client name</label>
+          <input id="clientName" name="clientName" type="text">
+          <div class="error" data-error-for="clientName" aria-live="polite"></div>
+        </div>
+        <div class="field">
+          <label for="projectName">Project name</label>
+          <input id="projectName" name="projectName" type="text">
+        </div>
+        <div class="field">
+          <label for="quoteDate">Quote date</label>
+          <input id="quoteDate" name="quoteDate" type="date">
+        </div>
+        <div class="row" style="margin-bottom: 8px;">
+          <div class="field" style="flex:1; margin: 0;">
+            <label for="dayRate">Day rate</label>
+            <input id="dayRate" name="dayRate" type="number" min="0" step="1" inputmode="decimal">
+            <div class="error" data-error-for="dayRate" aria-live="polite"></div>
+          </div>
+          <div class="field" style="flex:1; margin: 0;">
+            <label for="days">Days</label>
+            <input id="days" name="days" type="number" min="0" step="0.5" inputmode="decimal">
+            <div class="error" data-error-for="days" aria-live="polite"></div>
+          </div>
+        </div>
+        <div class="row" style="margin-bottom: 8px;">
+          <div class="field" style="flex:1; margin: 0;">
+            <label for="addonLabel">Extra line (optional)</label>
+            <input id="addonLabel" name="addonLabel" type="text" placeholder="e.g. Workshop fee">
+          </div>
+          <div class="field" style="flex:1; margin: 0;">
+            <label for="addonAmount">Amount</label>
+            <input id="addonAmount" name="addonAmount" type="number" min="0" step="1" inputmode="decimal">
+          </div>
+        </div>
+        <div class="row" style="margin-bottom: 8px;">
+          <div class="field" style="flex:1; margin: 0;">
+            <label for="discountPct">Discount (%)</label>
+            <input id="discountPct" name="discountPct" type="number" min="0" max="100" step="1" inputmode="numeric" value="0">
+          </div>
+          <div class="field" style="flex:1; margin: 0;">
+            <label for="taxPct">VAT / tax (%)</label>
+            <input id="taxPct" name="taxPct" type="number" min="0" max="100" step="1" inputmode="numeric" value="20">
+          </div>
+          <div class="field" style="flex:1; margin: 0;">
+            <label for="currency">Currency</label>
+            <select id="currency" name="currency">
+              <option>GBP</option><option>EUR</option><option>USD</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="notes">Notes (printed in the proposal)</label>
+          <textarea id="notes" name="notes" rows="3" style="width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:var(--radius); font:inherit;"></textarea>
+        </div>
+        <div class="row">
+          <button class="btn primary" type="submit">Calculate</button>
+          <button class="btn" type="button" id="sample-btn">Load sample</button>
+          <button class="btn" type="button" id="reset-btn">Reset</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card preview-card" aria-labelledby="totals-h">
+      <h2 id="totals-h" class="no-print">Totals</h2>
+      <div id="errors-summary" aria-live="polite"></div>
+      <div class="totals" id="totals-card">
+        <p class="muted">Enter project details and click Calculate.</p>
+      </div>
+      <div class="row no-print" style="margin-top: 12px;">
+        <button class="btn" type="button" id="copy-btn">Copy summary</button>
+        <button class="btn" type="button" id="export-json-btn">Export JSON</button>
+        <button class="btn" type="button" id="print-btn">Print proposal</button>
+      </div>
+    </section>
+  </div>
+
+  <section id="proposal" aria-label="Printable proposal">
+    <div class="head">
+      <div>
+        <h2 id="prop-project">Project</h2>
+        <div class="muted" id="prop-client"></div>
+      </div>
+      <div class="meta" id="prop-meta"></div>
+    </div>
+    <table>
+      <thead>
+        <tr><th>Item</th><th>Quantity</th><th>Rate</th><th style="text-align:right">Amount</th></tr>
+      </thead>
+      <tbody id="prop-rows"></tbody>
+      <tfoot id="prop-totals"></tfoot>
+    </table>
+    <p class="terms" id="prop-notes"></p>
+    <p class="terms muted" id="prop-footer"></p>
+  </section>
+</main>
+
+<footer>
+  <span id="footer-version"></span> · Local-only · No network · Single file
+</footer>
+
+<!-- FLATPACK:MANIFEST -->
+<script type="application/json" id="flatpack-manifest">
+{
+  "name": "Client project quote",
+  "artifactType": "calculator",
+  "version": "0.2.0",
+  "scope": "personal",
+  "persistence": "localStorage",
+  "network": "none",
+  "entities": [
+    {
+      "name": "Quote",
+      "fields": [
+        { "name": "clientName",   "type": "string", "required": true },
+        { "name": "projectName",  "type": "string" },
+        { "name": "quoteDate",    "type": "date" },
+        { "name": "dayRate",      "type": "number", "required": true, "min": 0 },
+        { "name": "days",         "type": "number", "required": true, "min": 0 },
+        { "name": "addonLabel",   "type": "string" },
+        { "name": "addonAmount",  "type": "number", "min": 0 },
+        { "name": "discountPct",  "type": "number", "required": true, "min": 0, "max": 100 },
+        { "name": "taxPct",       "type": "number", "required": true, "min": 0, "max": 100 },
+        { "name": "currency",     "type": "enum", "values": ["GBP","EUR","USD"], "required": true },
+        { "name": "notes",        "type": "text" }
+      ]
+    }
+  ],
+  "validations": [
+    "clientName is required",
+    "dayRate and days must be >= 0",
+    "discountPct and taxPct must be between 0 and 100",
+    "currency must be one of GBP, EUR, USD",
+    "discount is applied to subtotal before tax"
+  ],
+  "exports": ["json", "summary_clipboard", "print_pdf"],
+  "promotionSignals": [
+    "Multiple sales staff share a quote book",
+    "Approved quotes need to be sent as PDFs with sequential numbering",
+    "Quotes need to feed into invoicing or a CRM",
+    "Customer-facing acceptance flow is required"
+  ],
+  "archetype": "internal-tool-with-customer-readouts"
+}
+</script>
+
+<script>
+"use strict";
+
+/* FLATPACK:METADATA */
+const APP_META = {
+  name: "Client project quote",
+  version: "0.2.0",
+  description: "Build a sendable pricing summary for a fixed-scope project.",
+  dataPolicy: "local-only",
+  persistence: "localStorage",
+  network: "none"
+};
+const STORAGE_KEY = "flatpack:pricing-calculator:v1";
+
+/* FLATPACK:SCHEMA */
+const schema = {
+  clientName:   { type: "string", required: true,  label: "Client name" },
+  projectName:  { type: "string", required: false, label: "Project name" },
+  quoteDate:    { type: "string", required: false, label: "Quote date" },
+  dayRate:      { type: "number", required: true,  min: 0, label: "Day rate" },
+  days:         { type: "number", required: true,  min: 0, label: "Days" },
+  addonLabel:   { type: "string", required: false, label: "Extra line label" },
+  addonAmount:  { type: "number", required: false, min: 0, label: "Extra line amount" },
+  discountPct:  { type: "number", required: true,  min: 0, max: 100, label: "Discount (%)" },
+  taxPct:       { type: "number", required: true,  min: 0, max: 100, label: "Tax (%)" },
+  currency:     { type: "string", required: true,  oneOf: ["GBP","EUR","USD"], label: "Currency" },
+  notes:        { type: "string", required: false, label: "Notes" }
+};
+
+/* FLATPACK:STATE */
+const initialState = {
+  inputs: {
+    clientName: "", projectName: "", quoteDate: todayISO(),
+    dayRate: "", days: "",
+    addonLabel: "", addonAmount: "",
+    discountPct: 0, taxPct: 20, currency: "GBP",
+    notes: ""
+  },
+  result: null,
+  errors: []
+};
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !parsed.inputs) return null;
+    return { ...structuredClone(initialState), inputs: { ...initialState.inputs, ...parsed.inputs } };
+  } catch { return null; }
+}
+function saveState(s) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch {} }
+let state = loadState() ?? structuredClone(initialState);
+
+function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+
+/* FLATPACK:VALIDATION */
+function validate(data, rules) {
+  const errors = [];
+  for (const [k, r] of Object.entries(rules)) {
+    const v = data[k];
+    const empty = v === undefined || v === null || v === "";
+    if (r.required && empty) { errors.push({ field: k, message: `${r.label} is required.` }); continue; }
+    if (empty) continue;
+    if (r.type === "number") {
+      const n = Number(v);
+      if (!Number.isFinite(n)) { errors.push({ field: k, message: `${r.label} must be a number.` }); continue; }
+      if (r.min !== undefined && n < r.min) errors.push({ field: k, message: `${r.label} must be at least ${r.min}.` });
+      if (r.max !== undefined && n > r.max) errors.push({ field: k, message: `${r.label} must be at most ${r.max}.` });
+    }
+    if (r.oneOf && !r.oneOf.includes(String(v))) {
+      errors.push({ field: k, message: `${r.label} must be one of: ${r.oneOf.join(", ")}.` });
+    }
+  }
+  return errors;
+}
+
+/* FLATPACK:CORE_LOGIC — pure */
+function calculate(i) {
+  const days = Number(i.days || 0);
+  const rate = Number(i.dayRate || 0);
+  const labour = round2(days * rate);
+  const addon = round2(Number(i.addonAmount || 0));
+  const subtotal = round2(labour + addon);
+  const discount = round2(subtotal * (Number(i.discountPct || 0) / 100));
+  const net = round2(subtotal - discount);
+  const tax = round2(net * (Number(i.taxPct || 0) / 100));
+  const gross = round2(net + tax);
+  return {
+    currency: i.currency || "GBP",
+    lines: [
+      { label: i.projectName || "Project services", qty: `${days} day${days === 1 ? "" : "s"}`, rate: formatMoney(rate, i.currency), amount: labour },
+      ...(addon > 0 ? [{ label: i.addonLabel || "Additional services", qty: "", rate: "", amount: addon }] : [])
+    ],
+    labour, addon, subtotal, discount, net, tax, gross
+  };
+}
+function round2(n) { return Math.round(n * 100) / 100; }
+function formatMoney(amount, currency) {
+  try { return new Intl.NumberFormat(undefined, { style: "currency", currency: currency || "GBP" }).format(amount); }
+  catch { return `${currency || "GBP"} ${Number(amount).toFixed(2)}`; }
+}
+
+/* FLATPACK:IMPORT_EXPORT */
+function triggerDownload(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+function exportJSON() {
+  triggerDownload(new Blob([JSON.stringify({ meta: APP_META, ...state }, null, 2)], { type: "application/json" }), `${slug(state.inputs.clientName || "quote")}-quote.json`);
+}
+async function copySummary() {
+  if (!state.result) return;
+  const r = state.result;
+  const c = state.inputs.currency;
+  const lines = [
+    `Quote for ${state.inputs.clientName || "—"} (${state.inputs.quoteDate || todayISO()})`,
+    `Project: ${state.inputs.projectName || "—"}`,
+    `Labour: ${state.inputs.days || 0} × ${formatMoney(Number(state.inputs.dayRate || 0), c)} = ${formatMoney(r.labour, c)}`,
+    r.addon > 0 ? `${state.inputs.addonLabel || "Add-on"}: ${formatMoney(r.addon, c)}` : null,
+    `Subtotal: ${formatMoney(r.subtotal, c)}`,
+    r.discount > 0 ? `Discount (${state.inputs.discountPct}%): −${formatMoney(r.discount, c)}` : null,
+    `Net: ${formatMoney(r.net, c)}`,
+    r.tax > 0 ? `Tax (${state.inputs.taxPct}%): ${formatMoney(r.tax, c)}` : null,
+    `Total: ${formatMoney(r.gross, c)}`
+  ].filter(Boolean);
+  try { await navigator.clipboard.writeText(lines.join("\n")); }
+  catch { alert("Could not copy. Try Export JSON."); }
+}
+function resetState() { state = structuredClone(initialState); saveState(state); }
+function slug(s) { return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "quote"; }
+
+/* FLATPACK:RENDERING */
+const $ = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+
+function renderHeader() {
+  $("#app-title").textContent = APP_META.name;
+  $("#app-purpose").textContent = APP_META.description;
+  $("#footer-version").textContent = `${APP_META.name} v${APP_META.version}`;
+}
+function renderInputs() {
+  for (const k of Object.keys(schema)) {
+    const el = document.getElementById(k);
+    if (!el) continue;
+    if (el.tagName === "TEXTAREA") { if (el.value !== String(state.inputs[k] ?? "")) el.value = state.inputs[k] ?? ""; }
+    else if (el.value !== String(state.inputs[k] ?? "")) el.value = state.inputs[k] ?? "";
+  }
+}
+function renderErrors() {
+  $$("[data-error-for]").forEach(el => { el.textContent = ""; });
+  const summary = $("#errors-summary");
+  if (!state.errors.length) { summary.innerHTML = ""; return; }
+  for (const e of state.errors) {
+    const slot = document.querySelector(`[data-error-for="${e.field}"]`);
+    if (slot) slot.textContent = e.message;
+  }
+  summary.innerHTML = `<div class="alert error">Fix the highlighted fields and recalculate.</div>`;
+}
+function renderTotals() {
+  const r = state.result, c = state.inputs.currency;
+  const root = $("#totals-card");
+  if (!r) { root.innerHTML = `<p class="muted">Enter project details and click Calculate.</p>`; return; }
+  const rows = [
+    ["Labour", formatMoney(r.labour, c)],
+    r.addon > 0 ? [state.inputs.addonLabel || "Add-on", formatMoney(r.addon, c)] : null,
+    ["Subtotal", formatMoney(r.subtotal, c)],
+    r.discount > 0 ? [`Discount (${state.inputs.discountPct}%)`, `−${formatMoney(r.discount, c)}`] : null,
+    ["Net", formatMoney(r.net, c)],
+    r.tax > 0 ? [`Tax (${state.inputs.taxPct}%)`, formatMoney(r.tax, c)] : null
+  ].filter(Boolean);
+  root.innerHTML = `
+    <table>
+      <tbody>
+        ${rows.map(([k,v]) => `<tr><th scope="row">${k}</th><td style="text-align:right">${v}</td></tr>`).join("")}
+        <tr class="grand"><th scope="row">Total</th><td style="text-align:right">${formatMoney(r.gross, c)}</td></tr>
+      </tbody>
+    </table>
+  `;
+}
+function renderProposal() {
+  const r = state.result, c = state.inputs.currency, i = state.inputs;
+  $("#prop-project").textContent = i.projectName || "Project services";
+  $("#prop-client").textContent = `For ${i.clientName || "(client)"}`;
+  $("#prop-meta").innerHTML = `Quote date: ${i.quoteDate || todayISO()}<br>Currency: ${i.currency}`;
+  const rowsHtml = r ? r.lines.map(l => `
+    <tr>
+      <td>${escapeHtml(l.label)}</td>
+      <td>${escapeHtml(l.qty)}</td>
+      <td>${escapeHtml(l.rate)}</td>
+      <td style="text-align:right">${formatMoney(l.amount, c)}</td>
+    </tr>
+  `).join("") : `<tr><td colspan="4" class="muted">No result yet.</td></tr>`;
+  $("#prop-rows").innerHTML = rowsHtml;
+  $("#prop-totals").innerHTML = r ? `
+    <tr><th colspan="3" style="text-align:right">Subtotal</th><td style="text-align:right">${formatMoney(r.subtotal, c)}</td></tr>
+    ${r.discount > 0 ? `<tr><th colspan="3" style="text-align:right">Discount (${i.discountPct}%)</th><td style="text-align:right">−${formatMoney(r.discount, c)}</td></tr>` : ""}
+    <tr><th colspan="3" style="text-align:right">Net</th><td style="text-align:right">${formatMoney(r.net, c)}</td></tr>
+    ${r.tax > 0 ? `<tr><th colspan="3" style="text-align:right">Tax (${i.taxPct}%)</th><td style="text-align:right">${formatMoney(r.tax, c)}</td></tr>` : ""}
+    <tr><th colspan="3" style="text-align:right;font-size:1.1rem">Total</th><td style="text-align:right;font-size:1.1rem;font-weight:700">${formatMoney(r.gross, c)}</td></tr>
+  ` : "";
+  $("#prop-notes").textContent = i.notes || "";
+  $("#prop-footer").textContent = `Generated by ${APP_META.name} v${APP_META.version} · local-only.`;
+}
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function render() { renderHeader(); renderInputs(); renderTotals(); renderErrors(); renderProposal(); saveState(state); }
+
+/* FLATPACK:EVENTS */
+function readForm() {
+  const out = {};
+  for (const k of Object.keys(schema)) {
+    const el = document.getElementById(k);
+    out[k] = el ? el.value : "";
+  }
+  return out;
+}
+function bindEvents() {
+  $("#quote-form").addEventListener("submit", e => {
+    e.preventDefault();
+    state.inputs = { ...state.inputs, ...readForm() };
+    state.errors = validate(state.inputs, schema);
+    state.result = state.errors.length ? null : calculate(state.inputs);
+    render();
+  });
+  $("#quote-form").addEventListener("input", e => {
+    const k = e.target && e.target.name;
+    if (!k || !(k in state.inputs)) return;
+    state.inputs[k] = e.target.value;
+    saveState(state);
+  });
+  $("#sample-btn").addEventListener("click", () => {
+    state.inputs = {
+      clientName: "Acme Ltd",
+      projectName: "Discovery sprint",
+      quoteDate: todayISO(),
+      dayRate: 900,
+      days: 5,
+      addonLabel: "Workshop facilitation",
+      addonAmount: 600,
+      discountPct: 5,
+      taxPct: 20,
+      currency: "GBP",
+      notes: "Includes one half-day kick-off workshop and a written readout. Quote valid for 14 days."
+    };
+    state.errors = [];
+    state.result = calculate(state.inputs);
+    render();
+  });
+  $("#reset-btn").addEventListener("click", () => {
+    if (!confirm("Reset the form?")) return;
+    resetState(); render();
+  });
+  $("#copy-btn").addEventListener("click", copySummary);
+  $("#export-json-btn").addEventListener("click", exportJSON);
+  $("#print-btn").addEventListener("click", () => window.print());
+}
+
+/* FLATPACK:TEST_CASES */
+const TEST_CASES = [
+  {
+    name: "Basic labour total",
+    run: () => {
+      const r = calculate({ days: 5, dayRate: 900, addonAmount: 0, discountPct: 0, taxPct: 0, currency: "GBP" });
+      return r.labour === 4500 && r.subtotal === 4500 && r.gross === 4500;
+    }
+  },
+  {
+    name: "Add-on included in subtotal",
+    run: () => {
+      const r = calculate({ days: 1, dayRate: 1000, addonAmount: 250, discountPct: 0, taxPct: 0, currency: "GBP" });
+      return r.subtotal === 1250;
+    }
+  },
+  {
+    name: "Discount applied before tax",
+    run: () => {
+      const r = calculate({ days: 1, dayRate: 1000, addonAmount: 0, discountPct: 10, taxPct: 20, currency: "GBP" });
+      return r.discount === 100 && r.net === 900 && r.tax === 180 && r.gross === 1080;
+    }
+  },
+  {
+    name: "Missing client name fails validation",
+    run: () => {
+      const errs = validate({ clientName: "", dayRate: 1, days: 1, discountPct: 0, taxPct: 0, currency: "GBP" }, schema);
+      return errs.some(e => e.field === "clientName");
+    }
+  },
+  {
+    name: "bindEvents attaches listeners without throwing",
+    run: () => {
+      const realQS = document.querySelector;
+      const realAEL = document.addEventListener;
+      let attached = 0;
+      const mockEl = {
+        addEventListener: () => { attached++; },
+        classList: { add(){}, remove(){}, toggle(){} },
+        style: {}, dataset: {}, hidden: false, value: "", checked: false, textContent: ""
+      };
+      document.querySelector = () => mockEl;
+      document.addEventListener = () => { attached++; };
+      try { bindEvents(); return attached > 0; }
+      finally {
+        document.querySelector = realQS;
+        document.addEventListener = realAEL;
+      }
+    }
+  },
+  {
+    name: "loadState tolerates malformed stored data",
+    run: () => {
+      const realGet = localStorage.getItem;
+      localStorage.getItem = () => "not json {{{";
+      try { return loadState() === null; }
+      finally { localStorage.getItem = realGet; }
+    }
+  }
+];
+function runTests() {
+  const results = TEST_CASES.map(t => {
+    try { return { name: t.name, passed: !!t.run() }; }
+    catch (e) { return { name: t.name, passed: false, error: String(e) }; }
+  });
+  // eslint-disable-next-line no-console
+  console.table(results);
+  return results;
+}
+
+/* FLATPACK:BOOT */
+document.addEventListener("DOMContentLoaded", () => {
+  bindEvents();
+  render();
+  if (new URLSearchParams(location.search).get("test") === "1") runTests();
+});
+</script>
+</body>
+</html>
