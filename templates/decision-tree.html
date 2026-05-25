@@ -184,37 +184,26 @@ const tree = {
   root: "start",
   nodes: {
     start: {
-      question: "Is more than one person going to use this tool regularly?",
+      question: "Is this tool just for you — one person, one device?",
       answers: [
-        { label: "No — just me", next: "data-sensitivity", note: "Personal scope." },
-        { label: "Yes — a team or a wider group", next: "needs-audit", note: "Shared scope." }
+        { label: "Yes — it's a personal tool", next: "data-sensitivity", note: "Stay in the Flatpack world." },
+        { label: "No — others will use it too", next: "rec-baseplate", note: "Shared software." }
       ]
     },
     "data-sensitivity": {
       question: "Does the data need to leave your machine — for backup, sharing, or another tool?",
       answers: [
         { label: "No — it can stay local", next: "rec-flatpack" },
-        { label: "Yes — it needs to be somewhere centralised", next: "rec-baseplate-lite" }
-      ]
-    },
-    "needs-audit": {
-      question: "Do you need audit logs, role-based access, or other regulated controls?",
-      answers: [
-        { label: "No — just shared access is enough", next: "rec-baseplate-lite" },
-        { label: "Yes — we need those controls", next: "rec-baseplate" }
+        { label: "Yes — it needs to live somewhere centralised", next: "rec-baseplate" }
       ]
     },
     "rec-flatpack": {
       recommendation: "Flatpack",
       reason: "One user, local data, no shared state. A single HTML file is enough — and it survives indefinitely with no infrastructure to maintain."
     },
-    "rec-baseplate-lite": {
-      recommendation: "Baseplate (light tier — conceptual)",
-      reason: "You need a URL or light persistence but no real auth or audit. The 'Lite' tier is a future target in the Baseplate ecosystem — today, the honest answer is to build the smallest possible Baseplate app for this. Don't try to stretch a Flatpack to cover it."
-    },
     "rec-baseplate": {
       recommendation: "Baseplate",
-      reason: "Shared state, roles, audit, server-side secrets. This is a full-stack project. The Flatpack mental model has stopped fitting; promote the idea into a real Baseplate app."
+      reason: "Shared state, accounts, or central storage. The Flatpack mental model has stopped fitting; this is a full-stack project. Promote the Flatpack — if one already exists — into a Baseplate plan, using its manifest as the bridge."
     }
   }
 };

@@ -1,7 +1,16 @@
 # Flatpack
 
+[![check](https://github.com/ConceptPending/flatpack/actions/workflows/check.yml/badge.svg)](https://github.com/ConceptPending/flatpack/actions/workflows/check.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![alpha](https://img.shields.io/badge/release-v0.3.0--alpha-orange.svg)](https://github.com/ConceptPending/flatpack/releases)
+
 **A checkable standard for personal AI-built tools: agent-editable,
 local-first, single-file utilities that leave the chat.**
+
+> **Status: v0.3.0-alpha.** Coherent enough for outsiders to try.
+> The spec, prompts, templates, examples, manifest schema, and
+> checker are all in place. Expect the surface to stabilise rather
+> than expand from here. Feedback welcome via Issues.
 
 Flatpack gives AI coding agents a disciplined way to produce
 self-contained HTML utilities that run locally, need no backend, make
@@ -103,7 +112,10 @@ examples/
   pricing-calculator.html  Client project quote with discount, tax, proposal print
   case-chronology-helper.html  Date-ordered event log with tags, filters, print
 tools/
-  check-flatpack.mjs       Reviewer-facing validator. Not loaded by Flatpacks.
+  check-flatpack.mjs       Structural validator (reviewer/CI). Not loaded by Flatpacks.
+  run-flatpack-tests.mjs   Inline-test runner. Not loaded by Flatpacks.
+.github/workflows/
+  check.yml                Runs check-flatpack --strict on push/PR.
 ```
 
 No CLI, no platform, no hosted service. The repo *is* the product.
@@ -136,19 +148,22 @@ walk the checklist. Honest, binary, brief.
 
 ### As a reviewer or in CI
 
-Run the checker:
+Two scripts, no dependencies. The checker verifies structure; the
+runner exercises the inline tests outside a browser.
 
 ```bash
-node tools/check-flatpack.mjs                    # checks templates/ + examples/
-node tools/check-flatpack.mjs path/to/file.html  # checks one file
+node tools/check-flatpack.mjs                    # structural checks
+node tools/check-flatpack.mjs path/to/file.html  # one file
+node tools/check-flatpack.mjs --strict           # also runs inline tests
 node tools/check-flatpack.mjs --json             # JSON output
+
+node tools/run-flatpack-tests.mjs                # inline TEST_CASES only
 ```
 
-Exit code 0 if all files pass with no errors (warnings allowed). Exit
-code 1 if any file has an error. Checks section markers, manifest
-shape, network discipline, HELP subsections, file size, and lists
-`innerHTML` sites for manual XSS review. Uses only built-in Node
-modules — Flatpack itself remains zero-dependency.
+Both exit 0 on success, 1 on failure. The CI workflow at
+[`.github/workflows/check.yml`](.github/workflows/check.yml) runs
+`check-flatpack.mjs --strict` on every push/PR. Uses only built-in
+Node modules — Flatpack itself remains zero-dependency.
 
 ## Promotion
 

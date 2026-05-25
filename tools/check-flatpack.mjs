@@ -5,16 +5,20 @@
 //   node tools/check-flatpack.mjs                    # checks templates/ + examples/
 //   node tools/check-flatpack.mjs path/to/file.html  # checks one file
 //   node tools/check-flatpack.mjs --json             # JSON output
+//   node tools/check-flatpack.mjs --strict           # also runs run-flatpack-tests.mjs
 //
 // Exit codes:
-//   0 — all files pass with no errors (warnings allowed)
-//   1 — at least one file has an error
+//   0 — all files pass with no errors (warnings allowed) and, under --strict,
+//       all inline tests pass
+//   1 — at least one file has an error, or (under --strict) at least one
+//       inline test failed
 //
 // This script is for reviewers and CI. It is NOT loaded by the Flatpacks
 // themselves. Flatpacks remain zero-dependency artifacts.
 
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -214,9 +218,8 @@ function extractScriptBodies(html) {
 }
 
 function gatherTargets(argv) {
-  if (argv.length) {
-    return argv.filter(a => !a.startsWith("--")).map(a => path.resolve(a));
-  }
+  const explicit = argv.filter(a => !a.startsWith("--")).map(a => path.resolve(a));
+  if (explicit.length) return explicit;
   // Default: scan templates/ and examples/ in repo root.
   const targets = [];
   for (const dir of ["templates", "examples"]) {
@@ -233,9 +236,19 @@ function relativise(p) {
   return path.relative(REPO_ROOT, p) || p;
 }
 
+function runStrictTests(argv) {
+  // Re-invoke the standalone tests runner with the same file targets and the
+  // same --json flag, so --strict composes cleanly.
+  const runner = path.join(REPO_ROOT, "tools", "run-flatpack-tests.mjs");
+  const forwarded = argv.filter(a => a !== "--strict");
+  const res = spawnSync(process.execPath, [runner, ...forwarded], { stdio: "inherit" });
+  return res.status === 0;
+}
+
 function main() {
   const argv = process.argv.slice(2);
   const asJson = argv.includes("--json");
+  const strict = argv.includes("--strict");
   const targets = gatherTargets(argv);
   if (!targets.length) {
     console.error("No .html files to check.");
@@ -270,7 +283,15 @@ function main() {
     console.log(`Total: ${reports.length} file(s), ${errors} error(s), ${warnings} warning(s).`);
   }
 
-  process.exit(errors > 0 ? 1 : 0);
+  let testsOk = true;
+  if (strict) {
+    console.log("");
+    console.log("--- Running inline tests (--strict) ---");
+    testsOk = runStrictTests(argv);
+  }
+
+  const exitCode = (errors > 0 || !testsOk) ? 1 : 0;
+  process.exit(exitCode);
 }
 
 main();
