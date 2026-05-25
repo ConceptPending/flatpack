@@ -316,6 +316,7 @@ function applyMapping(rawRows, headers, mapping) {
 function normaliseCurrency(v) {
   return String(v || "").trim().toUpperCase();
 }
+/* FLATPACK:VALIDATION */
 function validateRow(row, rules) {
   const errs = [], warns = [];
   for (const [k, r] of Object.entries(rules)) {

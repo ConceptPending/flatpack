@@ -238,12 +238,19 @@ produce a useful promotion plan instead of guessing.
 **`scope`** is one of:
 
 - `"personal"` — one user, single device. The default.
-- `"shared-read-only"` — the file may be sent to a small known group
-  who all open it, but the tool has no shared state and no
-  collaboration. Each recipient still has their own local copy.
+- `"shared-read-only"` — the file is **still a personal artifact**.
+  It may be sent to others (over email, Slack, USB, paste-into-Notion),
+  but it has **no shared state**, **no collaboration**, **no central
+  authority**, and **no expectation that different recipients are
+  looking at the same data**. Each recipient has their own local copy.
+  Think of it as sharing a PDF or spreadsheet attachment, not as
+  sharing a system.
 
-If you find yourself wanting `"shared"` (multi-user, shared state), the
-tool has stopped being a Flatpack. See §8.
+`"shared-read-only"` is **not** a step toward Baseplate. It is the
+same product as `"personal"`, distributed differently. If the answer
+to "are these people expected to see synchronised data?" becomes yes,
+that is a promotion event — see §8. There is no `"shared"` value;
+that case is Baseplate.
 
 **`runtime.minimumBrowser`** declares the browser floor required by
 APIs the file uses. Sane defaults if omitted: Chrome 100, Safari 15.4,

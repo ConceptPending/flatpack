@@ -209,6 +209,17 @@ function loadState() {
 function saveState() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {} }
 let state = loadState() ?? structuredClone(initialState);
 
+/* FLATPACK:VALIDATION */
+function validate(vals, fieldSpecs) {
+  const errs = [];
+  for (const f of fieldSpecs) {
+    if (f.required && (!vals[f.id] || !String(vals[f.id]).trim())) {
+      errs.push({ field: f.id, message: `${f.label} is required.` });
+    }
+  }
+  return errs;
+}
+
 function todayISO() {
   const d = new Date();
   const mm = String(d.getMonth()+1).padStart(2, "0");

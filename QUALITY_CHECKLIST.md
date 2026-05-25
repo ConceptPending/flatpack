@@ -3,6 +3,16 @@
 Run every generated Flatpack through this before declaring it done.
 Each item is binary: pass or fix.
 
+For a mechanical run-through:
+
+```bash
+node tools/check-flatpack.mjs path/to/file.html
+```
+
+The checker enforces the structural items below (markers, manifest
+shape, network discipline, HELP subsections, file size). The
+behavioural items (UX, accessibility, honesty) still need a human eye.
+
 ## Functional
 
 - [ ] Opens by double-clicking `index.html`. No build step. No server.
@@ -28,7 +38,8 @@ Each item is binary: pass or fix.
       `APP_META`. Manifest entities/validations agree with the actual
       `SCHEMA` and `VALIDATION` code.
 - [ ] Manifest has an `archetype` (free-text whole-app description, not
-      a Baseplate recipe).
+      a Baseplate recipe). See [`docs/archetypes.md`](docs/archetypes.md)
+      for the living vocabulary.
 - [ ] `APP_META` is the single source of truth for name, version,
       `dataPolicy`, `persistence`, and `network`.
 - [ ] No external scripts, stylesheets, fonts, or images.

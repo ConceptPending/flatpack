@@ -24,7 +24,7 @@
     "scope": {
       "type": "string",
       "enum": ["personal", "shared-read-only"],
-      "description": "personal = one user / one device (default). shared-read-only = the file may be sent to a small known group; no shared state, no collaboration. Anything more is a promotion event."
+      "description": "personal = one user / one device (default). shared-read-only = still a personal artifact; the file may be sent to others (like a PDF) but there is no shared state, no collaboration, no central authority, no expectation of synchronised data across recipients. Anything more is a promotion event."
     },
     "persistence": {
       "type": "string",

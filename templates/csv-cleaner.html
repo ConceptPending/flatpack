@@ -302,6 +302,7 @@ function applyMapping(rawRows, headers, mapping) {
     return obj;
   });
 }
+/* FLATPACK:VALIDATION */
 function validateRow(row, rules) {
   const errs = [];
   for (const [k, r] of Object.entries(rules)) {

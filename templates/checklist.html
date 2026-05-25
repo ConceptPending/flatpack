@@ -236,6 +236,23 @@ function loadState() {
 function saveState() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {} }
 let state = loadState() ?? structuredClone(initialState);
 
+/* FLATPACK:VALIDATION */
+function validate(progress, list) {
+  const errs = [];
+  const validIds = new Set();
+  for (const s of list) for (const it of s.items) validIds.add(it.id);
+  for (const [id, entry] of Object.entries(progress || {})) {
+    if (!validIds.has(id)) continue;  // unknown ids are dropped by migration, not an error
+    if (entry == null || typeof entry !== "object") {
+      errs.push({ field: id, message: "entry must be an object" });
+      continue;
+    }
+    if (typeof entry.done !== "boolean") errs.push({ field: id, message: "done must be a boolean" });
+    if (entry.note !== undefined && typeof entry.note !== "string") errs.push({ field: id, message: "note must be a string" });
+  }
+  return errs;
+}
+
 /* FLATPACK:CORE_LOGIC — pure */
 function computeProgress(progress, list) {
   let total = 0, done = 0;

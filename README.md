@@ -1,11 +1,15 @@
 # Flatpack
 
-**A standard for personal AI-built tools.**
+**A checkable standard for personal AI-built tools: agent-editable,
+local-first, single-file utilities that leave the chat.**
 
 Flatpack gives AI coding agents a disciplined way to produce
 self-contained HTML utilities that run locally, need no backend, make
 no default network calls, and can be saved, reopened, sent, printed,
-exported, and edited later.
+exported, and edited again by a different agent later — without the
+file falling apart.
+
+A reviewer can verify the shape mechanically: `node tools/check-flatpack.mjs`.
 
 > **Flatpack is the file format for personal software.
 > Baseplate is the foundation for shared software.**
@@ -81,6 +85,8 @@ README.md                  This file
 SPEC.md                    What a Flatpack is, precisely
 QUALITY_CHECKLIST.md       Pass/fail review checklist
 manifest.schema.json       JSON Schema for the inline manifest (docs only)
+docs/
+  archetypes.md            Living vocabulary of whole-app archetypes
 prompts/
   generate-flatpack.md     Pasteable into CLAUDE.md / .cursorrules — the headline artifact
   modify-flatpack.md       How to brief an agent to edit one safely
@@ -96,6 +102,8 @@ examples/
   invoice-cleaner.html     CSV cleaner specialised for supplier invoices
   pricing-calculator.html  Client project quote with discount, tax, proposal print
   case-chronology-helper.html  Date-ordered event log with tags, filters, print
+tools/
+  check-flatpack.mjs       Reviewer-facing validator. Not loaded by Flatpacks.
 ```
 
 No CLI, no platform, no hosted service. The repo *is* the product.
@@ -125,6 +133,22 @@ to change. Bump `APP_META.version`. Migrate persisted state. Run
 
 Read [`prompts/review-flatpack.md`](prompts/review-flatpack.md) and
 walk the checklist. Honest, binary, brief.
+
+### As a reviewer or in CI
+
+Run the checker:
+
+```bash
+node tools/check-flatpack.mjs                    # checks templates/ + examples/
+node tools/check-flatpack.mjs path/to/file.html  # checks one file
+node tools/check-flatpack.mjs --json             # JSON output
+```
+
+Exit code 0 if all files pass with no errors (warnings allowed). Exit
+code 1 if any file has an error. Checks section markers, manifest
+shape, network discipline, HELP subsections, file size, and lists
+`innerHTML` sites for manual XSS review. Uses only built-in Node
+modules — Flatpack itself remains zero-dependency.
 
 ## Promotion
 
