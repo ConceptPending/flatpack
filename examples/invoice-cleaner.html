@@ -662,10 +662,17 @@ const TEST_CASES = [
   {
     name: "loadState tolerates malformed stored data",
     run: () => {
-      const realGet = localStorage.getItem;
-      localStorage.getItem = () => "not json {{{";
-      try { return loadState() === null; }
-      finally { localStorage.getItem = realGet; }
+      // Portable across Chromium / Firefox / WebKit: set a real malformed
+      // value rather than shadowing localStorage.getItem (which Firefox and
+      // WebKit don't allow you to overwrite on the Storage instance).
+      const prior = localStorage.getItem(STORAGE_KEY);
+      try {
+        localStorage.setItem(STORAGE_KEY, "not valid json {{{");
+        return loadState() === null;
+      } finally {
+        if (prior === null) localStorage.removeItem(STORAGE_KEY);
+        else localStorage.setItem(STORAGE_KEY, prior);
+      }
     }
   }
 ];
