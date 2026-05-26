@@ -92,6 +92,31 @@ Then read these regions, in order, to fill in the rest:
   understood about the tool. The Baseplate version's data model has
   to honour or explicitly supersede that.
 
+### 2b. Write `promoted-entities.json` if you introduced entities
+
+If the promotion plan introduces entities beyond the Flatpack's
+manifest declarations — typical for `import-validate-store` and
+`workflow-with-checklist` archetypes, where a `Supplier` or `Run`
+gets factored out of the original — write them to a structured file
+alongside the plan:
+
+```
+reference/promoted-entities.json
+```
+
+Same field shape as the manifest's `entities[]`. Add a `source` flag
+on each: `code-inferred` or `interview-required`. Baseplate's
+`verify_promotion.py` reads this file and asserts a model exists per
+entry — without it, code-inferred entities are invisible to
+verification. See Baseplate
+[`docs/promoting-a-flatpack.md`](https://github.com/ConceptPending/baseplate/blob/main/docs/promoting-a-flatpack.md)
+for the exact format.
+
+This is separate from the Flatpack manifest because the manifest is
+the **author's** declaration; this file is the **promotion-time
+agent's** declaration. Conflating them would muddy the confidence
+tiers.
+
 ### 3. Produce the promotion plan
 
 The plan distinguishes **three confidence tiers** so the reader knows
