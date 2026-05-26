@@ -55,7 +55,22 @@ Flatpack and revisit later.
 
 ### 2. Analyse the Flatpack
 
-Read these regions, in order, and extract:
+Run `tools/promote.mjs` first to generate a plan skeleton:
+
+```bash
+node tools/promote.mjs path/to/flatpack.html --out plan.md
+```
+
+The script fills every `MANIFEST-ASSERTED` section automatically from
+the inline manifest. Your job from here is to walk the
+`CODE-INFERRED` sections (by reading the JS) and the
+`INTERVIEW-REQUIRED` sections (by asking the user), replacing the
+labelled placeholders with real answers. **Do not invent answers.**
+
+The script is mechanical by design — it doesn't try to do the
+agent's judgement work.
+
+Then read these regions, in order, to fill in the rest:
 
 - **`FLATPACK:MANIFEST`** — the canonical list of entities, fields,
   validations, exports, promotion signals, recommended recipe.
