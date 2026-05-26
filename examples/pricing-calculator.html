@@ -457,7 +457,7 @@ function renderProposal() {
   const r = state.result, c = state.inputs.currency, i = state.inputs;
   $("#prop-project").textContent = i.projectName || "Project services";
   $("#prop-client").textContent = `For ${i.clientName || "(client)"}`;
-  $("#prop-meta").innerHTML = `Quote date: ${i.quoteDate || todayISO()}<br>Currency: ${i.currency}`;
+  $("#prop-meta").innerHTML = `Quote date: ${escapeHtml(i.quoteDate || todayISO())}<br>Currency: ${escapeHtml(i.currency)}`;
   const rowsHtml = r ? r.lines.map(l => `
     <tr>
       <td>${escapeHtml(l.label)}</td>
@@ -469,9 +469,9 @@ function renderProposal() {
   $("#prop-rows").innerHTML = rowsHtml;
   $("#prop-totals").innerHTML = r ? `
     <tr><th colspan="3" style="text-align:right">Subtotal</th><td style="text-align:right">${formatMoney(r.subtotal, c)}</td></tr>
-    ${r.discount > 0 ? `<tr><th colspan="3" style="text-align:right">Discount (${i.discountPct}%)</th><td style="text-align:right">−${formatMoney(r.discount, c)}</td></tr>` : ""}
+    ${r.discount > 0 ? `<tr><th colspan="3" style="text-align:right">Discount (${escapeHtml(String(i.discountPct))}%)</th><td style="text-align:right">−${formatMoney(r.discount, c)}</td></tr>` : ""}
     <tr><th colspan="3" style="text-align:right">Net</th><td style="text-align:right">${formatMoney(r.net, c)}</td></tr>
-    ${r.tax > 0 ? `<tr><th colspan="3" style="text-align:right">Tax (${i.taxPct}%)</th><td style="text-align:right">${formatMoney(r.tax, c)}</td></tr>` : ""}
+    ${r.tax > 0 ? `<tr><th colspan="3" style="text-align:right">Tax (${escapeHtml(String(i.taxPct))}%)</th><td style="text-align:right">${formatMoney(r.tax, c)}</td></tr>` : ""}
     <tr><th colspan="3" style="text-align:right;font-size:1.1rem">Total</th><td style="text-align:right;font-size:1.1rem;font-weight:700">${formatMoney(r.gross, c)}</td></tr>
   ` : "";
   $("#prop-notes").textContent = i.notes || "";

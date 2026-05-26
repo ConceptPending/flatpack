@@ -4,21 +4,79 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![alpha](https://img.shields.io/badge/release-v0.3.0--alpha-orange.svg)](https://github.com/ConceptPending/flatpack/releases)
 
-**A checkable standard for personal AI-built tools: agent-editable,
-local-first, single-file utilities that leave the chat.**
+**A checkable standard for personal AI-built tools: one HTML file,
+runs offline, agent-editable, leaves the chat.**
 
-> **Status: v0.3.0-alpha.** Coherent enough for outsiders to try.
-> The spec, prompts, templates, examples, manifest schema, and
-> checker are all in place. Expect the surface to stabilise rather
-> than expand from here. Feedback welcome via Issues.
+> *Artifacts live in the chat. Flatpacks leave the chat.*
 
-Flatpack gives AI coding agents a disciplined way to produce
-self-contained HTML utilities that run locally, need no backend, make
-no default network calls, and can be saved, reopened, sent, printed,
-exported, and edited again by a different agent later — without the
-file falling apart.
+---
 
-A reviewer can verify the shape mechanically: `node tools/check-flatpack.mjs`.
+## Try one — 30 seconds
+
+1. **Download** [`examples/invoice-cleaner.html`](examples/invoice-cleaner.html)
+   (right-click → Save link as…).
+2. **Double-click** the file. It opens in your browser. It works offline.
+3. Click **Load sample data**. Drop your own CSV instead if you want.
+4. Optional: append `?test=1` to the URL — see the inline tests run.
+
+There is no install. The file is the program. Open the four other
+templates the same way: [`calculator`](templates/calculator.html) ·
+[`csv-cleaner`](templates/csv-cleaner.html) ·
+[`checklist`](templates/checklist.html) ·
+[`report-builder`](templates/report-builder.html) ·
+[`decision-tree`](templates/decision-tree.html).
+
+## Install Flatpack into your AI agent
+
+Copy one file into your project so your agent produces Flatpacks by default.
+
+```bash
+# Claude Code
+curl -L https://raw.githubusercontent.com/ConceptPending/flatpack/main/agent-rules/CLAUDE.md > CLAUDE.md
+# Cursor
+mkdir -p .cursor/rules && curl -L https://raw.githubusercontent.com/ConceptPending/flatpack/main/agent-rules/cursor.mdc > .cursor/rules/flatpack.mdc
+# Windsurf
+curl -L https://raw.githubusercontent.com/ConceptPending/flatpack/main/agent-rules/windsurf.md > .windsurfrules
+# GitHub Copilot
+mkdir -p .github && curl -L https://raw.githubusercontent.com/ConceptPending/flatpack/main/agent-rules/copilot-instructions.md > .github/copilot-instructions.md
+# Generic AGENTS.md (Codex, Aider, etc.)
+curl -L https://raw.githubusercontent.com/ConceptPending/flatpack/main/agent-rules/AGENTS.md > AGENTS.md
+```
+
+After this, ask your agent for a small tool — *"a calculator for
+project quotes," "a cleaner for these CSVs," "a kickoff checklist"* —
+and it should produce a Flatpack-shaped file. See
+[`agent-rules/README.md`](agent-rules/README.md) for the per-tool
+install paths.
+
+## Verify the shape
+
+Once you have a Flatpack, you can check it mechanically:
+
+```bash
+git clone https://github.com/ConceptPending/flatpack
+cd flatpack
+npm install && npx playwright install   # optional: only for browser smoke test
+
+node tools/check-flatpack.mjs your-flatpack.html --strict
+```
+
+The checker confirms: required section markers, manifest shape,
+network discipline (no `fetch`, no external resources), HELP block
+present, file under size limits, inline tests pass. Lists every
+`innerHTML` site for manual XSS review. Zero dependencies; uses only
+built-in Node.
+
+CI runs `--strict` on every push.
+
+---
+
+## What this is — and isn't
+
+Flatpack solves the **form factor**, not the generation. Any agent —
+ChatGPT, Claude, Cursor, Windsurf, your local model — can produce a
+Flatpack. The spec is what makes the output portable, inspectable,
+and editable by a different agent later.
 
 > **Flatpack is the file format for personal software.
 > Baseplate is the foundation for shared software.**
@@ -29,13 +87,6 @@ AI has made personal software viable. Anyone can ask a model for a
 small custom tool and get one. But the output usually lives in a chat
 window, which is the worst possible place to keep something you want
 to use again next month.
-
-Flatpack solves the form factor, not the generation. Any agent —
-ChatGPT, Claude, Cursor, Windsurf, your local model — can produce
-a Flatpack. The spec is what makes it portable, inspectable, and
-editable later.
-
-> **Artifacts live in the chat. Flatpacks leave the chat.**
 
 ## What a Flatpack is
 
@@ -66,7 +117,7 @@ suggestions. Templates are not a framework: **the shape is the API**.
   generates *into*.
 - Not a CLI. No `npx flatpack create`. Not yet, possibly not ever.
 - Not a hosted product. No accounts. No platform.
-- Not a Baseplate Lite. See "Promotion" below.
+- Not a smaller Baseplate. Different category. See "Promotion" below.
 
 ## Personal vs shared software
 
@@ -103,6 +154,7 @@ agent-rules/
   copilot-instructions.md  GitHub Copilot (.github/)
 docs/
   archetypes.md            Living vocabulary of whole-app archetypes
+  perf-notes.md            Measured limits: 500k-row CSVs in ~1s, honest ceilings
 prompts/
   generate-flatpack.md     Pasteable into CLAUDE.md / .cursorrules — the headline artifact
   modify-flatpack.md       How to brief an agent to edit one safely
