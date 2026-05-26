@@ -114,6 +114,9 @@ examples/
 tools/
   check-flatpack.mjs       Structural validator (reviewer/CI). Not loaded by Flatpacks.
   run-flatpack-tests.mjs   Inline-test runner. Not loaded by Flatpacks.
+  promote.mjs              Reads a Flatpack manifest, emits a promotion-plan skeleton.
+case-studies/
+  invoice-cleaner-promotion/   Worked example: Flatpack → promotion plan → Baseplate target.
 .github/workflows/
   check.yml                Runs check-flatpack --strict on push/PR.
 ```
@@ -191,9 +194,20 @@ the production version is being built.
 > When a tool is just for you, keep it flat. When people start
 > depending on it, give it a base.
 
-See [`SPEC.md`](SPEC.md) §8 for the carry-over table and
+See [`SPEC.md`](SPEC.md) §8 for the carry-over table,
 [`prompts/promote-flatpack.md`](prompts/promote-flatpack.md) for the
-agent flow.
+agent flow, and
+[`case-studies/invoice-cleaner-promotion/`](case-studies/invoice-cleaner-promotion/)
+for a worked example end-to-end. The skeleton can be generated
+mechanically:
+
+```bash
+node tools/promote.mjs examples/invoice-cleaner.html --out plan.md
+```
+
+This fills the MANIFEST-ASSERTED sections from the inline manifest;
+the CODE-INFERRED and INTERVIEW-REQUIRED sections are deliberately
+left as placeholders for the agent (and user) to walk through.
 
 ## Branding
 

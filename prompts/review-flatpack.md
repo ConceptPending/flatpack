@@ -16,7 +16,7 @@ item is a real fix.
 
 ## Output
 
-A short markdown report with three sections:
+A short markdown report with four sections:
 
 ```
 ## Verdict
@@ -27,6 +27,11 @@ A short markdown report with three sections:
 
 ## Suggested fixes
   Numbered list, smallest change first.
+
+## Promotion readiness
+  Which of the manifest's promotionSignals are firing? Cite each one
+  and whether it's "not yet", "starting", or "fired". A Flatpack with
+  signals firing is doing its job — flag it, do not fix it.
 ```
 
 That's it. No restatement of what the tool does. No congratulations.
