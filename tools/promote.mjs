@@ -63,6 +63,7 @@ function renderPlan(manifest, sourcePath) {
   const archetype = manifest.archetype || "(none — manifest does not declare one)";
   const entities = manifest.entities || [];
   const validations = manifest.validations || [];
+  const predicates = manifest.validation_predicates || [];
   const exports_ = manifest.exports || [];
   const imports = manifest.imports || [];
   const signals = manifest.promotionSignals || [];
@@ -74,6 +75,16 @@ function renderPlan(manifest, sourcePath) {
   const validationBlock = validations.length
     ? validations.map(v => `- ${v} **MANIFEST-ASSERTED**`).join("\n")
     : "<!-- MANIFEST has no validations declared. CODE-INFERRED: walk VALIDATION. -->";
+
+  const predicateBlock = predicates.length
+    ? predicates
+        .map(p => {
+          const v = p.value !== undefined ? ` ${JSON.stringify(p.value)}` : "";
+          const desc = p.description ? `  _${p.description}_` : "";
+          return `- \`${p.field}\` ${p.constraint}${v} **MANIFEST-ASSERTED**${desc}`;
+        })
+        .join("\n")
+    : "<!-- MANIFEST has no validation_predicates. The structured form is optional; the plain-text validations above are still authoritative. -->";
 
   const exportBlock = exports_.length
     ? exports_.map(e => `- ${e} **MANIFEST-ASSERTED**`).join("\n")
@@ -158,6 +169,10 @@ ${entityBlock}
 ## Validation rules (carry-over from manifest)
 
 ${validationBlock}
+
+### Structured form (validation_predicates)
+
+${predicateBlock}
 
 <!-- CODE-INFERRED:
      Are there additional validation rules in the file's

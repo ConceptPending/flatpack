@@ -248,6 +248,16 @@
     "currency must be one of GBP, EUR, USD",
     "discount is applied to subtotal before tax"
   ],
+  "validation_predicates": [
+    { "field": "clientName",   "constraint": "required" },
+    { "field": "dayRate",      "constraint": "gte", "value": 0 },
+    { "field": "days",         "constraint": "gte", "value": 0 },
+    { "field": "discountPct",  "constraint": "gte", "value": 0 },
+    { "field": "discountPct",  "constraint": "lte", "value": 100 },
+    { "field": "taxPct",       "constraint": "gte", "value": 0 },
+    { "field": "taxPct",       "constraint": "lte", "value": 100 },
+    { "field": "currency",     "constraint": "one_of", "value": ["GBP", "EUR", "USD"] }
+  ],
   "exports": ["json", "summary_clipboard", "print_pdf"],
   "promotionSignals": [
     "Multiple sales staff share a quote book",

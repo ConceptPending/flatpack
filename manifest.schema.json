@@ -92,8 +92,35 @@
     },
     "validations": {
       "type": "array",
-      "description": "Plain-English rules. Each item is a single rule. The promotion agent converts these to backend + frontend validation.",
+      "description": "Plain-English rules. Each item is a single rule. The promotion agent converts these to backend + frontend validation. Kept for human readability; the structured form for machine verification is `validation_predicates`.",
       "items": { "type": "string" }
+    },
+    "validation_predicates": {
+      "type": "array",
+      "description": "Optional structured form of `validations`. Each predicate names a field, a constraint, and (for parametric constraints) a value. A promotion-time verifier on the receiving side can resolve these against the destination's field declarations directly, sidestepping the text-matching false-positives that the plain `validations` array suffers from. See https://github.com/ConceptPending/baseplate/issues/33 for the motivation.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["field", "constraint"],
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "Name of the field on the relevant entity (must appear in `entities[].fields[].name`)."
+          },
+          "constraint": {
+            "type": "string",
+            "description": "The constraint kind. Conventional vocabulary: required, gt, gte, lt, lte, min_length, max_length, one_of, unique, format, not_in_future. Free-text — extend as new shapes appear.",
+            "examples": ["required", "gt", "gte", "lt", "lte", "min_length", "max_length", "one_of", "unique", "format", "not_in_future"]
+          },
+          "value": {
+            "description": "Optional parameter for the constraint. e.g. for `gt` the threshold; for `one_of` the list; for `format` the format name."
+          },
+          "description": {
+            "type": "string",
+            "description": "Plain-English rendering of the predicate. Matches one of the strings in `validations` when present."
+          }
+        }
+      }
     },
     "exports": {
       "type": "array",

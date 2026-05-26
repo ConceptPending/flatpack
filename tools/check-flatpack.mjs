@@ -125,6 +125,30 @@ function checkFile(filePath) {
         });
       }
     }
+
+    // validation_predicates subset check (optional field; structured form
+    // of `validations`). Each predicate must name a field that exists in
+    // some entity, and a constraint.
+    if (manifest.validation_predicates !== undefined) {
+      if (!Array.isArray(manifest.validation_predicates)) {
+        issues.push({ level: "error", code: "manifest-predicates-not-array", msg: "Manifest validation_predicates must be an array." });
+      } else {
+        const knownFields = new Set();
+        for (const e of manifest.entities || []) {
+          for (const f of e.fields || []) knownFields.add(f.name);
+        }
+        manifest.validation_predicates.forEach((p, i) => {
+          if (!p.field) {
+            issues.push({ level: "error", code: "manifest-predicate-no-field", msg: `validation_predicates[${i}] missing field.` });
+          } else if (knownFields.size && !knownFields.has(p.field)) {
+            issues.push({ level: "warn", code: "manifest-predicate-unknown-field", msg: `validation_predicates[${i}].field "${p.field}" not in any entity's fields.` });
+          }
+          if (!p.constraint) {
+            issues.push({ level: "error", code: "manifest-predicate-no-constraint", msg: `validation_predicates[${i}] (${p.field || "?"}) missing constraint.` });
+          }
+        });
+      }
+    }
   }
 
   // 4. Stale fields anywhere in the file.

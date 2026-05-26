@@ -260,6 +260,11 @@
     "tags are normalised to lower case and trimmed",
     "search matches event, source, notes, and tags"
   ],
+  "validation_predicates": [
+    { "field": "date",  "constraint": "required" },
+    { "field": "event", "constraint": "required" },
+    { "field": "date",  "constraint": "format", "value": "date" }
+  ],
   "exports": ["json", "csv", "print_pdf"],
   "imports": ["json"],
   "promotionSignals": [

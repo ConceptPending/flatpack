@@ -217,6 +217,14 @@ agent reads it to plan the Baseplate version.
     "duplicate invoice numbers should be flagged",
     "currency outside the allowed list is a warning, defaults to GBP"
   ],
+  "validation_predicates": [
+    { "field": "invoiceNumber", "constraint": "required" },
+    { "field": "invoiceNumber", "constraint": "unique" },
+    { "field": "amount",        "constraint": "gt", "value": 0 },
+    { "field": "invoiceDate",   "constraint": "format", "value": "date" },
+    { "field": "invoiceDate",   "constraint": "not_in_future" },
+    { "field": "currency",      "constraint": "one_of", "value": ["GBP","EUR","USD"] }
+  ],
   "exports": ["clean_csv", "errors_csv", "summary_print"],
   "promotionSignals": [
     "Multiple reviewers need to share a batch",
@@ -234,6 +242,17 @@ agent reads it to plan the Baseplate version.
 recommended — their presence is what allows
 [`prompts/promote-flatpack.md`](prompts/promote-flatpack.md) to
 produce a useful promotion plan instead of guessing.
+
+**`validations` vs `validation_predicates`.** The plain-text
+`validations` array is the source of truth for humans. The optional
+`validation_predicates` array is the structured form for receiving-side
+verifiers — each predicate names a field, a constraint
+(`required`, `gt`/`gte`/`lt`/`lte`, `min_length`, `max_length`,
+`one_of`, `unique`, `format`, `not_in_future`, …), and, where
+applicable, a value. The two forms are kept in lockstep by the author.
+A Baseplate verifier can resolve predicates against actual field
+declarations rather than text-matching, sidestepping the false
+positives the plain-text form suffers.
 
 **`scope`** is one of:
 
