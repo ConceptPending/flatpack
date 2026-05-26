@@ -60,12 +60,35 @@ In order:
    showing what the new Baseplate project gets scaffolded as, and
    what new code is needed beyond the recipes.
 
+## A worked promotion exists
+
+The plan in this directory was walked end-to-end. The receiving
+Baseplate project lives at
+**[ConceptPending/flatpack-invoice-review-example](https://github.com/ConceptPending/flatpack-invoice-review-example)**.
+
+Inside that repo:
+
+- `reference/original-flatpack.html` — the frozen Flatpack the build
+  started from.
+- `reference/promotion-plan.md` — the plan from this directory,
+  copied across at promotion time.
+- `reference/decisions.md` — answers given to the plan's
+  `INTERVIEW-REQUIRED` items.
+- `backend/` — the actual FastAPI app, with 33 passing tests.
+- `make verify-promotion` — 10 OK, 0 miss, 0 warn against the
+  Flatpack manifest.
+
+The example repo's README lists the **bridge issues** the exercise
+surfaced (verifier weaknesses, doc inconsistencies). Those are the
+real product of doing the worked example — see
+[its "What we learned" section](https://github.com/ConceptPending/flatpack-invoice-review-example#what-we-learned).
+
 ## What this case study does not include
 
-- **A working Baseplate codebase.** Promotion is a planning step, not
-  a code transformation. The target sketch tells you what the project
-  becomes; the project itself lives in the Baseplate repo once
-  scaffolded.
+- **A working Baseplate codebase in this directory.** Promotion is a
+  planning step, not a code transformation. The target sketch in
+  `baseplate-target/` tells you what the project becomes; the project
+  itself lives in the Baseplate-shaped repo linked above.
 - **A finished decision on every open question.** The
   `INTERVIEW-REQUIRED` items in the plan are deliberately left as
   questions. They are what the team should answer *before* scaffolding,
