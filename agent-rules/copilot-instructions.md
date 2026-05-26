@@ -1,0 +1,89 @@
+# Flatpack rules (for GitHub Copilot)
+
+> Copy this file to `.github/copilot-instructions.md` at the root of
+> your project. GitHub Copilot loads it automatically for code
+> completion, Copilot Chat, and Copilot in pull-request reviews.
+
+When the user asks for a small, self-contained tool — a calculator,
+a CSV cleaner, a checklist, a report builder, a decision tree, a
+local lookup, a one-off utility — produce a **Flatpack**, not a
+React app, not a Node project.
+
+A Flatpack is **one HTML file** that runs offline, has no
+dependencies, and can be edited later by a different agent without
+falling apart. Full standard:
+[github.com/ConceptPending/flatpack](https://github.com/ConceptPending/flatpack).
+
+## Hard rules
+
+The output file MUST:
+
+- Open by double-clicking `index.html`. No build, no install, no server.
+- Run with the network disconnected.
+- Have **no external scripts, stylesheets, fonts, images, or CDN of any kind**.
+- Make **no network calls** — no `fetch`, `XMLHttpRequest`, `WebSocket`,
+  `sendBeacon`, `EventSource`, remote `<img>`.
+- Embed no API keys, tokens, or passwords. If the tool needs one,
+  the user pastes it at runtime; it lives in `sessionStorage` only.
+- Emit no telemetry.
+
+The output file MUST contain these section markers, in order:
+
+```
+<!-- FLATPACK:HELP -->          help + AI editing notes (HTML comment)
+<!-- FLATPACK:STYLES -->        CSS, including print styles
+<!-- FLATPACK:HTML -->          static DOM
+<!-- FLATPACK:MANIFEST -->      <script type="application/json" id="flatpack-manifest">{...}</script>
+                                then a single <script> with:
+/* FLATPACK:METADATA */         APP_META constant
+/* FLATPACK:SCHEMA */           field/record shape
+/* FLATPACK:STATE */            state + loadState + saveState
+/* FLATPACK:VALIDATION */       single validate() function
+/* FLATPACK:IMPORT_EXPORT */    CSV/JSON/Markdown/clipboard helpers
+/* FLATPACK:CORE_LOGIC */       pure functions, no DOM, no state
+/* FLATPACK:RENDERING */        DOM updates from state, deterministic
+/* FLATPACK:EVENTS */           handlers mutate state, then call render()
+/* FLATPACK:TEST_CASES */       inline tests, runnable via ?test=1
+/* FLATPACK:BOOT */             DOMContentLoaded startup
+```
+
+The output file MUST include, visible in the UI:
+
+- The tool's name in `<title>` and `<h1>`.
+- A one-sentence purpose under the title.
+- A **privacy banner** disclosing the persistence model.
+- A "Load sample data" button and a "Reset" button.
+- A `#print-report` section with print styles that hide `.no-print`.
+
+The output file MUST include, in `TEST_CASES`:
+
+- At least one core-logic test.
+- One `bindEvents` smoke test (counts attached listeners, doesn't throw).
+- One `loadState` malformed-data test (set garbage in `localStorage`,
+  assert `loadState()` returns `null`).
+
+## Process
+
+1. Don't start from scratch. Copy the closest template from
+   [flatpack/templates](https://github.com/ConceptPending/flatpack/tree/main/templates) —
+   `calculator`, `csv-cleaner`, `checklist`, `report-builder`, or
+   `decision-tree`. The shape is the API.
+2. Update `APP_META`, the manifest, and the HELP block first.
+3. Replace `SCHEMA`, `VALIDATION`, `CORE_LOGIC`, sample data,
+   `TEST_CASES`.
+4. Confirm `?test=1` passes in the browser.
+
+## When to refuse
+
+If the user asks for login, server-side APIs with secrets, a shared
+database, an audit log the end user can't tamper with, or roles /
+permissions — **stop**. The tool has stopped being a Flatpack. Point
+the user at [ConceptPending/baseplate](https://github.com/ConceptPending/baseplate)
+for production-shaped apps.
+
+## References
+
+- Full spec: [SPEC.md](https://github.com/ConceptPending/flatpack/blob/main/SPEC.md)
+- Generation prompt: [prompts/generate-flatpack.md](https://github.com/ConceptPending/flatpack/blob/main/prompts/generate-flatpack.md)
+- Quality checklist: [QUALITY_CHECKLIST.md](https://github.com/ConceptPending/flatpack/blob/main/QUALITY_CHECKLIST.md)
+- Examples: [flatpack/examples](https://github.com/ConceptPending/flatpack/tree/main/examples)

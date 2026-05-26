@@ -94,6 +94,13 @@ README.md                  This file
 SPEC.md                    What a Flatpack is, precisely
 QUALITY_CHECKLIST.md       Pass/fail review checklist
 manifest.schema.json       JSON Schema for the inline manifest (docs only)
+agent-rules/
+  README.md                Install guide: copy one file into your project
+  CLAUDE.md                Claude Code
+  AGENTS.md                Generic / Codex / Aider
+  cursor.mdc               Cursor (.cursor/rules/)
+  windsurf.md              Windsurf (.windsurfrules)
+  copilot-instructions.md  GitHub Copilot (.github/)
 docs/
   archetypes.md            Living vocabulary of whole-app archetypes
 prompts/
@@ -115,6 +122,7 @@ tools/
   check-flatpack.mjs       Structural validator (reviewer/CI). Not loaded by Flatpacks.
   run-flatpack-tests.mjs   Inline-test runner. Not loaded by Flatpacks.
   promote.mjs              Reads a Flatpack manifest, emits a promotion-plan skeleton.
+  browser-smoke-test.mjs   Playwright-driven cross-browser smoke test.
 case-studies/
   invoice-cleaner-promotion/   Worked example: Flatpack → promotion plan → Baseplate target.
 .github/workflows/
@@ -136,6 +144,12 @@ the top, and you have a starting point.
 Read [`SPEC.md`](SPEC.md), pick the closest template, follow
 [`prompts/generate-flatpack.md`](prompts/generate-flatpack.md), and
 pass [`QUALITY_CHECKLIST.md`](QUALITY_CHECKLIST.md) before declaring done.
+
+If you're an AI coding tool's user (Claude Code, Cursor, Windsurf,
+GitHub Copilot, or any agent that reads `AGENTS.md`), copy one file
+from [`agent-rules/`](agent-rules/) into your project to install
+Flatpack discipline into the agent's context — see
+[`agent-rules/README.md`](agent-rules/README.md) for one-line installs.
 
 ### As an agent (editing)
 
