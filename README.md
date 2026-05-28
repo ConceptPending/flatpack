@@ -9,22 +9,32 @@ runs offline, agent-editable, leaves the chat.**
 
 > *Artifacts live in the chat. Flatpacks leave the chat.*
 
+The standard lives at **[flatpack.info](https://flatpack.info)**. This
+repo is the source: spec, templates, examples, tooling, agent-rules.
+
 ---
 
-## Try one — 30 seconds
+## Try one — 10 seconds
 
-1. **Download** [`examples/invoice-cleaner.html`](examples/invoice-cleaner.html)
-   (right-click → Save link as…).
-2. **Double-click** the file. It opens in your browser. It works offline.
-3. Click **Load sample data**. Drop your own CSV instead if you want.
-4. Optional: append `?test=1` to the URL — see the inline tests run.
+**[Open the invoice cleaner in your browser →](https://flatpack.info/try/invoice-cleaner)**
 
-There is no install. The file is the program. Open the four other
-templates the same way: [`calculator`](templates/calculator.html) ·
-[`csv-cleaner`](templates/csv-cleaner.html) ·
-[`checklist`](templates/checklist.html) ·
-[`report-builder`](templates/report-builder.html) ·
-[`decision-tree`](templates/decision-tree.html).
+Click *Load sample data*. Use it. Append `?test=1` to the URL to watch
+the inline tests run live (`console.table` in DevTools). Right-click →
+*Save As* if you want to keep a local copy — once it's on your disk
+it works offline forever.
+
+That's the whole onboarding. No install, no account, no setup. The
+file is the program.
+
+More to try, each one a single self-contained HTML file:
+
+| Templates | Examples |
+|---|---|
+| [calculator](https://flatpack.info/try/calculator) | [pricing-calculator](https://flatpack.info/try/pricing-calculator) |
+| [csv-cleaner](https://flatpack.info/try/csv-cleaner) | [invoice-cleaner](https://flatpack.info/try/invoice-cleaner) |
+| [checklist](https://flatpack.info/try/checklist) | [case-chronology-helper](https://flatpack.info/try/case-chronology-helper) |
+| [report-builder](https://flatpack.info/try/report-builder) | |
+| [decision-tree](https://flatpack.info/try/decision-tree) | |
 
 ## Install Flatpack into your AI agent
 
@@ -187,9 +197,9 @@ No CLI, no platform, no hosted service. The repo *is* the product.
 
 ### As a human
 
-Open any file in `templates/` directly in your browser. Each one runs
-on its own with sample data. Save a copy, edit the `APP_META` block at
-the top, and you have a starting point.
+Open any template via [flatpack.info/try/](https://flatpack.info/try/invoice-cleaner) —
+each one runs on its own with sample data. Save a copy, edit the
+`APP_META` block at the top, and you have a starting point.
 
 ### As an agent (generating)
 
@@ -290,3 +300,9 @@ Baseplate for this yet.*
 ## License
 
 MIT.
+
+---
+
+Canonical home: **[flatpack.info](https://flatpack.info)**. Source:
+this repo. The site is itself a single self-contained HTML file —
+the same discipline it advocates for.
