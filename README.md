@@ -42,15 +42,15 @@ Copy one file into your project so your agent produces Flatpacks by default.
 
 ```bash
 # Claude Code
-curl -L https://raw.githubusercontent.com/ConceptPending/flatpack/main/agent-rules/CLAUDE.md > CLAUDE.md
+curl -L https://flatpack.info/agent-rules/CLAUDE.md > CLAUDE.md
 # Cursor
-mkdir -p .cursor/rules && curl -L https://raw.githubusercontent.com/ConceptPending/flatpack/main/agent-rules/cursor.mdc > .cursor/rules/flatpack.mdc
+mkdir -p .cursor/rules && curl -L https://flatpack.info/agent-rules/cursor.mdc > .cursor/rules/flatpack.mdc
 # Windsurf
-curl -L https://raw.githubusercontent.com/ConceptPending/flatpack/main/agent-rules/windsurf.md > .windsurfrules
+curl -L https://flatpack.info/agent-rules/windsurf.md > .windsurfrules
 # GitHub Copilot
-mkdir -p .github && curl -L https://raw.githubusercontent.com/ConceptPending/flatpack/main/agent-rules/copilot-instructions.md > .github/copilot-instructions.md
+mkdir -p .github && curl -L https://flatpack.info/agent-rules/copilot-instructions.md > .github/copilot-instructions.md
 # Generic AGENTS.md (Codex, Aider, etc.)
-curl -L https://raw.githubusercontent.com/ConceptPending/flatpack/main/agent-rules/AGENTS.md > AGENTS.md
+curl -L https://flatpack.info/agent-rules/AGENTS.md > AGENTS.md
 ```
 
 After this, ask your agent for a small tool — *"a calculator for
