@@ -1,6 +1,6 @@
 {
   "name": "flatpack-repo",
-  "version": "0.3.0-alpha",
+  "version": "0.4.0-alpha",
   "private": true,
   "description": "Repo-level tooling for the Flatpack standard. Flatpack artifacts themselves are zero-dependency single HTML files — this package.json exists only for reviewer-side scripts under tools/.",
   "license": "MIT",

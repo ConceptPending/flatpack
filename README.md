@@ -2,7 +2,7 @@
 
 [![check](https://github.com/ConceptPending/flatpack/actions/workflows/check.yml/badge.svg)](https://github.com/ConceptPending/flatpack/actions/workflows/check.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![alpha](https://img.shields.io/badge/release-v0.3.0--alpha-orange.svg)](https://github.com/ConceptPending/flatpack/releases)
+[![alpha](https://img.shields.io/badge/release-v0.4.0--alpha-orange.svg)](https://github.com/ConceptPending/flatpack/releases)
 
 **A checkable standard for personal AI-built tools: one HTML file,
 runs offline, agent-editable, leaves the chat.**
