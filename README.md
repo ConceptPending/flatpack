@@ -73,11 +73,27 @@ node tools/check-flatpack.mjs your-flatpack.html --strict
 
 The checker confirms: required section markers, manifest shape,
 network discipline (no `fetch`, no external resources), HELP block
-present, file under size limits, inline tests pass. Lists every
-`innerHTML` site for manual XSS review. Zero dependencies; uses only
-built-in Node.
+present, file under size limits, inline tests pass. Zero dependencies;
+uses only built-in Node.
 
-CI runs `--strict` on every push.
+It also **enforces** escaping discipline rather than just listing sites:
+
+- **`escapeHtml`/`escapeAttr` called but never defined** → error.
+- **A raw value assigned straight to `innerHTML`** (`el.innerHTML = userInput`,
+  not a template literal or `.map().join()` composition) → error.
+- **Interpolated `innerHTML` with no escaper defined anywhere** → error.
+- A function result assigned to `innerHTML` (e.g. a markdown→HTML converter)
+  → warning to confirm it sanitises.
+- Every `innerHTML` site is still listed for review.
+
+And it flags **manifest drift**: a `validation_predicates` field that appears
+nowhere in the code (the manifest is the promotion bridge — drift there would
+silently corrupt a promotion).
+
+The checker's own logic is covered by `node tools/test-checker.mjs`, which runs
+it over deliberately-bad fixtures and asserts the expected findings.
+
+CI runs `--strict` and the self-tests on every push.
 
 ---
 
