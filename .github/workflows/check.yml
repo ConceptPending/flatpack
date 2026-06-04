@@ -23,3 +23,6 @@ jobs:
 
       - name: Check structure + run inline tests (strict)
         run: node tools/check-flatpack.mjs --strict
+
+      - name: Promotion-plan golden test (promote.mjs)
+        run: node tools/test-promote.mjs

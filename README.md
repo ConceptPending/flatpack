@@ -184,6 +184,7 @@ tools/
   check-flatpack.mjs       Structural validator (reviewer/CI). Not loaded by Flatpacks.
   run-flatpack-tests.mjs   Inline-test runner. Not loaded by Flatpacks.
   promote.mjs              Reads a Flatpack manifest, emits a promotion-plan skeleton.
+  test-promote.mjs         Golden-file test for promote.mjs (runs in CI).
   browser-smoke-test.mjs   Playwright-driven cross-browser smoke test.
 case-studies/
   invoice-cleaner-promotion/   Worked example: Flatpack → promotion plan → Baseplate target.
@@ -284,6 +285,12 @@ node tools/promote.mjs examples/invoice-cleaner.html --out plan.md
 This fills the MANIFEST-ASSERTED sections from the inline manifest;
 the CODE-INFERRED and INTERVIEW-REQUIRED sections are deliberately
 left as placeholders for the agent (and user) to walk through.
+
+The skeleton generation is pinned by a golden-file test
+([`tools/test-promote.mjs`](tools/test-promote.mjs), run in CI), so the
+manifest→plan half of the round-trip stays stable. The other half — verifying
+the *built* Baseplate project against the manifest — lives on the Baseplate
+side as `backend/scripts/verify_promotion.py` (`make verify-promotion`).
 
 ## Branding
 
