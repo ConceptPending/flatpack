@@ -33,3 +33,6 @@ jobs:
       # this fails — which keeps the sample lockfile honest.
       - name: Verify example registry lockfile
         run: node tools/check-registry.mjs examples/flatpack-lock.json examples
+
+      - name: Promotion-plan golden test (promote.mjs)
+        run: node tools/test-promote.mjs
