@@ -23,3 +23,10 @@ jobs:
 
       - name: Check structure + run inline tests (strict)
         run: node tools/check-flatpack.mjs --strict
+
+      # Dogfood the governance tool: the examples are a "blessed" set pinned in
+      # examples/flatpack-lock.json. If an example changes without re-blessing
+      # (node tools/check-registry.mjs --init examples > examples/flatpack-lock.json),
+      # this fails — which keeps the sample lockfile honest.
+      - name: Verify example registry lockfile
+        run: node tools/check-registry.mjs examples/flatpack-lock.json examples

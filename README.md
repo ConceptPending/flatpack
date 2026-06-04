@@ -165,6 +165,8 @@ agent-rules/
 docs/
   archetypes.md            Living vocabulary of whole-app archetypes
   perf-notes.md            Measured limits: 500k-row CSVs in ~1s, honest ceilings
+  governance.md            Blessing + pinning Flatpacks in an org (lockfile)
+  adoption-policy.md       Copy-edit policy template for org adoption
 prompts/
   generate-flatpack.md     Pasteable into CLAUDE.md / .cursorrules — the headline artifact
   modify-flatpack.md       How to brief an agent to edit one safely
@@ -185,6 +187,7 @@ tools/
   run-flatpack-tests.mjs   Inline-test runner. Not loaded by Flatpacks.
   promote.mjs              Reads a Flatpack manifest, emits a promotion-plan skeleton.
   browser-smoke-test.mjs   Playwright-driven cross-browser smoke test.
+  check-registry.mjs       Verify a dir of Flatpacks against a flatpack-lock.json.
 case-studies/
   invoice-cleaner-promotion/   Worked example: Flatpack → promotion plan → Baseplate target.
 .github/workflows/
@@ -284,6 +287,30 @@ node tools/promote.mjs examples/invoice-cleaner.html --out plan.md
 This fills the MANIFEST-ASSERTED sections from the inline manifest;
 the CODE-INFERRED and INTERVIEW-REQUIRED sections are deliberately
 left as placeholders for the agent (and user) to walk through.
+
+## Adopting Flatpack in an org
+
+A team can standardise on Flatpack for internal, low-stakes, personal tools
+without a backend or a platform. The governance primitive is a **lockfile** —
+`flatpack-lock.json` pins the "blessed" Flatpacks by version and content hash —
+verified by a zero-dependency script:
+
+```bash
+# Bless a directory's current contents:
+node tools/check-registry.mjs --init blessed/ > flatpack-lock.json
+# Verify (in CI or before distribution): catches tampered or un-blessed files.
+node tools/check-registry.mjs flatpack-lock.json blessed/
+```
+
+It exits non-zero on a hash mismatch (a hand-edited file), a version drift, or
+an un-blessed `.html` circulating alongside the approved set — so it gates a
+pipeline cleanly. See [`docs/governance.md`](docs/governance.md) for the
+mechanism and [`docs/adoption-policy.md`](docs/adoption-policy.md) for a
+copy-edit policy template (review gate, ownership, promotion triggers).
+
+This governs *distribution of personal tools* — it is **not** a step toward
+shared state. The moment a tool needs shared state, accounts, or a tamper-proof
+audit log, that is a promotion event: it wants Baseplate, not a lockfile.
 
 ## Branding
 
