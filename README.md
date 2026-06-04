@@ -73,11 +73,27 @@ node tools/check-flatpack.mjs your-flatpack.html --strict
 
 The checker confirms: required section markers, manifest shape,
 network discipline (no `fetch`, no external resources), HELP block
-present, file under size limits, inline tests pass. Lists every
-`innerHTML` site for manual XSS review. Zero dependencies; uses only
-built-in Node.
+present, file under size limits, inline tests pass. Zero dependencies;
+uses only built-in Node.
 
-CI runs `--strict` on every push.
+It also **enforces** escaping discipline rather than just listing sites:
+
+- **`escapeHtml`/`escapeAttr` called but never defined** → error.
+- **A raw value assigned straight to `innerHTML`** (`el.innerHTML = userInput`,
+  not a template literal or `.map().join()` composition) → error.
+- **Interpolated `innerHTML` with no escaper defined anywhere** → error.
+- A function result assigned to `innerHTML` (e.g. a markdown→HTML converter)
+  → warning to confirm it sanitises.
+- Every `innerHTML` site is still listed for review.
+
+And it flags **manifest drift**: a `validation_predicates` field that appears
+nowhere in the code (the manifest is the promotion bridge — drift there would
+silently corrupt a promotion).
+
+The checker's own logic is covered by `node tools/test-checker.mjs`, which runs
+it over deliberately-bad fixtures and asserts the expected findings.
+
+CI runs `--strict` and the self-tests on every push.
 
 ---
 
@@ -165,6 +181,8 @@ agent-rules/
 docs/
   archetypes.md            Living vocabulary of whole-app archetypes
   perf-notes.md            Measured limits: 500k-row CSVs in ~1s, honest ceilings
+  governance.md            Blessing + pinning Flatpacks in an org (lockfile)
+  adoption-policy.md       Copy-edit policy template for org adoption
 prompts/
   generate-flatpack.md     Pasteable into CLAUDE.md / .cursorrules — the headline artifact
   modify-flatpack.md       How to brief an agent to edit one safely
@@ -186,6 +204,7 @@ tools/
   promote.mjs              Reads a Flatpack manifest, emits a promotion-plan skeleton.
   test-promote.mjs         Golden-file test for promote.mjs (runs in CI).
   browser-smoke-test.mjs   Playwright-driven cross-browser smoke test.
+  check-registry.mjs       Verify a dir of Flatpacks against a flatpack-lock.json.
 case-studies/
   invoice-cleaner-promotion/   Worked example: Flatpack → promotion plan → Baseplate target.
 .github/workflows/
@@ -291,6 +310,30 @@ The skeleton generation is pinned by a golden-file test
 manifest→plan half of the round-trip stays stable. The other half — verifying
 the *built* Baseplate project against the manifest — lives on the Baseplate
 side as `backend/scripts/verify_promotion.py` (`make verify-promotion`).
+
+## Adopting Flatpack in an org
+
+A team can standardise on Flatpack for internal, low-stakes, personal tools
+without a backend or a platform. The governance primitive is a **lockfile** —
+`flatpack-lock.json` pins the "blessed" Flatpacks by version and content hash —
+verified by a zero-dependency script:
+
+```bash
+# Bless a directory's current contents:
+node tools/check-registry.mjs --init blessed/ > flatpack-lock.json
+# Verify (in CI or before distribution): catches tampered or un-blessed files.
+node tools/check-registry.mjs flatpack-lock.json blessed/
+```
+
+It exits non-zero on a hash mismatch (a hand-edited file), a version drift, or
+an un-blessed `.html` circulating alongside the approved set — so it gates a
+pipeline cleanly. See [`docs/governance.md`](docs/governance.md) for the
+mechanism and [`docs/adoption-policy.md`](docs/adoption-policy.md) for a
+copy-edit policy template (review gate, ownership, promotion triggers).
+
+This governs *distribution of personal tools* — it is **not** a step toward
+shared state. The moment a tool needs shared state, accounts, or a tamper-proof
+audit log, that is a promotion event: it wants Baseplate, not a lockfile.
 
 ## Branding
 

@@ -202,19 +202,64 @@ function checkFile(filePath) {
     }
   }
 
-  // 9. innerHTML sites (warning — for manual review).
+  // 9. innerHTML / escaping analysis.
+  const joinedScript = scriptBodies.join("\n//<--script-break-->\n");
+
+  // 9a. Escaper called but never defined — user strings would be inserted raw.
+  for (const name of ESCAPERS) {
+    const used = new RegExp(`\\b${name}\\s*\\(`).test(joinedScript);
+    if (used && !escaperDefined(joinedScript, name)) {
+      issues.push({
+        level: "error",
+        code: "xss-escaper-undefined",
+        msg: `${name}() is called but never defined in the file — user-supplied strings would be inserted unescaped.`,
+      });
+    }
+  }
+
+  // 9b. Per-assignment classification of innerHTML/outerHTML sinks.
   const innerHTMLSites = [];
-  const scriptForLines = scriptBodies.join("\n//<--script-break-->\n");
-  const lines = scriptForLines.split("\n");
-  lines.forEach((line, i) => {
-    if (/\.innerHTML\s*=/.test(line)) innerHTMLSites.push(`line ${i + 1}: ${line.trim().slice(0, 80)}`);
-  });
+  const sinkRe = /\.(innerHTML|outerHTML)\s*=(?!=)/g;
+  let mSink;
+  while ((mSink = sinkRe.exec(joinedScript)) !== null) {
+    const prop = mSink[1];
+    const rhs = readRhs(joinedScript, sinkRe.lastIndex);
+    const snippet = `.${prop} = ${rhs.trim().replace(/\s+/g, " ").slice(0, 80)}`;
+    const cls = classifyInnerHtmlRhs(rhs);
+    if (cls === "raw") {
+      issues.push({
+        level: "error",
+        code: "xss-raw-innerhtml-sink",
+        msg: `Raw value assigned to ${prop} with no escaping: ${snippet}`,
+      });
+    } else if (cls === "call") {
+      issues.push({
+        level: "warn",
+        code: "xss-innerhtml-call",
+        msg: `Function result assigned to ${prop} — confirm it escapes/sanitises: ${snippet}`,
+      });
+    }
+    if (prop === "innerHTML") innerHTMLSites.push(snippet);
+  }
+
+  // 9c. Interpolated innerHTML composition with NO escaper defined anywhere.
+  const anyInterpolated = /\.innerHTML\s*=\s*`[^`]*\$\{/.test(joinedScript);
+  const anyEscaperDefined = ESCAPERS.some((n) => escaperDefined(joinedScript, n));
+  if (anyInterpolated && !anyEscaperDefined) {
+    issues.push({
+      level: "error",
+      code: "xss-no-escaper",
+      msg: "innerHTML is built with ${...} interpolation but no escapeHtml/escapeAttr helper is defined. Define one and wrap user-supplied values.",
+    });
+  }
+
+  // 9d. Informational listing — narrows manual XSS review to the actual sites.
   if (innerHTMLSites.length) {
     issues.push({
       level: "warn",
       code: "innerhtml-sites",
-      msg: `${innerHTMLSites.length} innerHTML assignment(s) — review each for XSS safety. All user-supplied strings must pass through escapeHtml().`,
-      detail: innerHTMLSites.slice(0, 5)
+      msg: `${innerHTMLSites.length} innerHTML assignment(s) — review each for XSS safety. User-supplied strings must pass through escapeHtml().`,
+      detail: innerHTMLSites.slice(0, 5),
     });
   }
 
@@ -223,6 +268,32 @@ function checkFile(filePath) {
     issues.push({ level: "error", code: "file-too-large", msg: `File is ${(bytes / 1024).toFixed(1)} KB — over the ${FILE_SIZE_ERROR_BYTES / 1024} KB ceiling. The form factor is breaking.` });
   } else if (bytes > FILE_SIZE_WARN_BYTES) {
     issues.push({ level: "warn", code: "file-large", msg: `File is ${(bytes / 1024).toFixed(1)} KB — above the ${FILE_SIZE_WARN_BYTES / 1024} KB recommended cap. Consider trimming.` });
+  }
+
+  // 11. Manifest <-> code drift.
+  //
+  // The manifest is the promotion bridge — its `validation_predicates` are the
+  // structured contract a Baseplate-side verifier (verify_promotion.py)
+  // resolves against real field declarations. A predicate naming a field that
+  // appears nowhere in the code is drift that would silently corrupt a
+  // promotion, so we flag it (warn — a field could be deliberately renamed).
+  //
+  // We deliberately do NOT flag per-entity field drift: a Flatpack legitimately
+  // represents data differently from the manifest's *promoted* (relational)
+  // shape — e.g. nesting items under a section instead of carrying an explicit
+  // `sectionId` FK. Field-level matching there is noise, not signal.
+  if (manifest && Array.isArray(manifest.validation_predicates)) {
+    const codeCorpus = extractScriptBodies(html).join("\n");
+    for (const p of manifest.validation_predicates) {
+      if (!p || !p.field) continue;
+      if (!new RegExp(`\\b${escapeRegex(p.field)}\\b`).test(codeCorpus)) {
+        issues.push({
+          level: "warn",
+          code: "predicate-field-drift",
+          msg: `validation_predicate field "${p.field}" appears nowhere in the script — manifest may have drifted from the code it promotes.`,
+        });
+      }
+    }
   }
 
   return { filePath, bytes, manifest, issues };
@@ -239,6 +310,85 @@ function extractScriptBodies(html) {
     out.push(m[2]);
   }
   return out;
+}
+
+// --- XSS / escaping analysis -------------------------------------------------
+
+const ESCAPERS = ["escapeHtml", "escapeAttr"];
+
+function escaperDefined(script, name) {
+  // `function escapeHtml(` or `const/let/var escapeHtml =`.
+  return new RegExp(
+    `(?:function\\s+${name}\\b)|(?:\\b(?:const|let|var)\\s+${name}\\s*=)`,
+  ).test(script);
+}
+
+// Read the right-hand side of an assignment starting just after `=`, up to the
+// statement-terminating `;` at bracket depth 0, correctly skipping over string
+// and template literals (which may contain `;`, newlines, and brackets). This
+// is what lets us classify multi-line assignments like
+//   el.innerHTML = cond
+//     ? `<b>${escapeHtml(x)}</b>`
+//     : "";
+// without misreading the first physical line as the whole RHS.
+function readRhs(src, startIdx) {
+  let i = startIdx;
+  let depth = 0;
+  let quote = null;
+  let out = "";
+  while (i < src.length) {
+    const c = src[i];
+    if (quote) {
+      out += c;
+      if (c === "\\") { out += src[i + 1] ?? ""; i += 2; continue; }
+      if (c === quote) quote = null;
+      i++;
+      continue;
+    }
+    if (c === "'" || c === '"' || c === "`") { quote = c; out += c; i++; continue; }
+    if (c === "(" || c === "[" || c === "{") { depth++; out += c; i++; continue; }
+    if (c === ")" || c === "]" || c === "}") { depth--; out += c; i++; continue; }
+    if (c === ";" && depth === 0) break;
+    out += c;
+    i++;
+  }
+  return out;
+}
+
+const _IDENT_CHAIN = /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*|\[[^\]]+\])*$/;
+
+// Classify the right-hand side of an `X.innerHTML = RHS` assignment (RHS is the
+// text up to end-of-line). Designed for HIGH PRECISION — only the unambiguous
+// raw-sink shape is an error; anything that composes markup via literals or
+// .map()/.join() is treated as safe.
+//   "raw"  — a bare identifier / member chain with no escaping and not a *Html
+//            fragment variable: the classic XSS sink (el.innerHTML = userInput). ERROR.
+//   "call" — a function-call result assigned directly (e.g. a markdown→HTML
+//            converter): could be unsafe, confirm it sanitises. WARN.
+//   "safe" — empty, contains a string/template literal, an escapeHtml/escapeAttr
+//            call, or a .map()/.join() composition. No finding.
+function classifyInnerHtmlRhs(rhs) {
+  const t = rhs.trim().replace(/;.*$/, "").trim();
+  if (t === "") return "safe";
+  if (
+    /[`'"]/.test(t) ||
+    /escapeHtml\s*\(|escapeAttr\s*\(/.test(t) ||
+    /\.(map|join)\s*\(/.test(t)
+  ) {
+    return "safe";
+  }
+  if (_IDENT_CHAIN.test(t)) {
+    // Fragment-variable convention: names ending in "html" hold composed markup
+    // (e.g. rowsHtml built earlier from escaped cells).
+    if (/html$/i.test(t.replace(/\[[^\]]+\]/g, ""))) return "safe";
+    return "raw";
+  }
+  // A function call or other complex expression with no visible literal/escaper.
+  return "call";
+}
+
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function gatherTargets(argv) {

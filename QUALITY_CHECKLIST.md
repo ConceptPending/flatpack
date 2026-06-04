@@ -10,8 +10,11 @@ node tools/check-flatpack.mjs path/to/file.html
 ```
 
 The checker enforces the structural items below (markers, manifest
-shape, network discipline, HELP subsections, file size). The
-behavioural items (UX, accessibility, honesty) still need a human eye.
+shape, network discipline, HELP subsections, file size). It also
+enforces escaping discipline (escaper defined and used; no raw value
+assigned to `innerHTML`) and flags `validation_predicates` fields that
+have drifted from the code. The behavioural items (UX, accessibility,
+honesty) still need a human eye.
 
 ## Functional
 
@@ -48,6 +51,10 @@ behavioural items (UX, accessibility, honesty) still need a human eye.
 - [ ] State is centralised. No ad-hoc globals scattered through handlers.
 - [ ] Validation lives in one `validate()` function used by every input path.
 - [ ] Core logic is pure: no DOM access, no state mutation.
+- [ ] Every user-supplied string written to `innerHTML` passes through
+      `escapeHtml()` (or `escapeAttr()` in an attribute). No raw value is
+      assigned straight to `innerHTML`. The checker enforces the clear-cut
+      cases; the residual (is *this* interpolation user data?) is on you.
 - [ ] Rendering is deterministic: `render()` can be called any time and
       produce the correct DOM from current state.
 - [ ] `localStorage` / `IndexedDB` use is gracefully degraded if disabled

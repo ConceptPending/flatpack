@@ -1,0 +1,20 @@
+{
+  "lockfileVersion": 1,
+  "flatpacks": {
+    "case-chronology-helper": {
+      "file": "case-chronology-helper.html",
+      "version": "0.1.0",
+      "sha256": "404e609c4cecb7c96d42431209bc1fc5601f93b3c87af55b10ce08f09a05f9a2"
+    },
+    "invoice-cleaner": {
+      "file": "invoice-cleaner.html",
+      "version": "0.2.0",
+      "sha256": "7340a795115a2a3befe8e7f29d874e25128d5e8a684a8836b0898593d579aa34"
+    },
+    "pricing-calculator": {
+      "file": "pricing-calculator.html",
+      "version": "0.2.0",
+      "sha256": "e1f8127e83789692ac04f1318a36ef48ef281cfd8e521ad89106e511aa691274"
+    }
+  }
+}
