@@ -24,6 +24,9 @@ jobs:
       - name: Check structure + run inline tests (strict)
         run: node tools/check-flatpack.mjs --strict
 
+      - name: Checker self-tests (XSS + drift fixtures)
+        run: node tools/test-checker.mjs
+
       # Dogfood the governance tool: the examples are a "blessed" set pinned in
       # examples/flatpack-lock.json. If an example changes without re-blessing
       # (node tools/check-registry.mjs --init examples > examples/flatpack-lock.json),

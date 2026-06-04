@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<!-- Fixture: assigns a raw user value straight to innerHTML. Expect xss-raw-innerhtml-sink. -->
+<html>
+  <body>
+    <div id="o"></div>
+    <script>
+      function render(userInput) {
+        document.getElementById("o").innerHTML = userInput;
+      }
+    </script>
+  </body>
+</html>

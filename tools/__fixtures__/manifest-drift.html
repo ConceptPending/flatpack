@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<!-- Fixture: a validation_predicate names a field (ghost_field) that appears
+     nowhere in the code. Expect predicate-field-drift. -->
+<html>
+  <body>
+    <script type="application/json" id="flatpack-manifest">
+      {
+        "name": "Drift fixture",
+        "artifactType": "calculator",
+        "version": "0.1.0",
+        "scope": "personal",
+        "persistence": "none",
+        "network": "none",
+        "entities": [
+          { "name": "Thing", "fields": [{ "name": "amount", "type": "number" }] }
+        ],
+        "validation_predicates": [
+          { "field": "amount", "constraint": "required" },
+          { "field": "ghost_field", "constraint": "required" }
+        ]
+      }
+    </script>
+    <script>
+      /* FLATPACK:SCHEMA */
+      const schema = { amount: { type: "number", required: true } };
+    </script>
+  </body>
+</html>
