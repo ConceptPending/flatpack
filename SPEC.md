@@ -355,6 +355,14 @@ Plus, in the code:
 - A single `validate()` function. All input paths use it.
 - A single `render()` function. All UI updates go through it.
 - Core logic that is pure — no DOM access, no state mutation.
+- An `escapeHtml()` (and, where attributes are built, `escapeAttr()`)
+  helper, defined in the file, through which **every** user-supplied
+  string passes before it is written to `innerHTML`. Never assign a raw
+  value (`el.innerHTML = userInput`) — compose with template literals
+  whose interpolations are escaped, or use `textContent`. The checker
+  (§ tooling) enforces the clear-cut violations: an escaper called but
+  never defined, a raw value assigned straight to `innerHTML`, or
+  interpolated `innerHTML` with no escaper defined at all.
 
 ---
 

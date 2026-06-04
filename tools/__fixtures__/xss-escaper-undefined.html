@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<!-- Fixture: calls escapeHtml() but never defines it. Expect xss-escaper-undefined. -->
+<html>
+  <body>
+    <div id="o"></div>
+    <script>
+      function render(x) {
+        document.getElementById("o").innerHTML = `<b>${escapeHtml(x)}</b>`;
+      }
+    </script>
+  </body>
+</html>
