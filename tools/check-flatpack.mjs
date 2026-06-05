@@ -59,6 +59,13 @@ const FORBIDDEN_EXTERNAL = [
   { re: /<link[^>]+href\s*=\s*["']https?:\/\//i, name: "<link href=https?://>" },
   { re: /<img[^>]+src\s*=\s*["']https?:\/\//i, name: "<img src=https?://>" },
   { re: /<iframe[^>]+src\s*=\s*["']https?:\/\//i, name: "<iframe src=https?://>" },
+  // Additional external-resource / exfiltration vectors a self-contained
+  // flatpack must never use.
+  { re: /<object[^>]+data\s*=\s*["']https?:\/\//i, name: "<object data=https?://>" },
+  { re: /<embed[^>]+src\s*=\s*["']https?:\/\//i, name: "<embed src=https?://>" },
+  { re: /<base[^>]+href\s*=\s*["']https?:\/\//i, name: "<base href=https?://>" },
+  { re: /url\s*\(\s*["']?https?:\/\//i, name: "CSS url(https?://)" },
+  { re: /@import\s+["']https?:\/\//i, name: "CSS @import https?://" },
 ];
 
 const STALE_FIELDS = ["recommendedBaseplateRecipe"];
